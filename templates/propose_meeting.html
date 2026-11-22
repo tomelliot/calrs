@@ -1,0 +1,66 @@
+{% extends "dashboard_base.html" %}
+{#- Fork: propose times, step 1: the meeting, under each booking site. -#}
+{% block title %}{{ t("propose-title") }}, calrs{% endblock %}
+{% block main_class %}has-cards{% endblock %}
+{% block dashboard_content %}
+{% import "partials/phosphor.html" as ph %}
+{% set step = 1 %}
+{% include "partials/propose_head.html" %}
+<style>
+  .pp-sites { max-width: 54rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem; }
+  .pp-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  .pp-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 1rem;
+    padding: 0.75rem 1rem; border: 1px solid var(--card-rule, var(--border)); border-radius: var(--radius);
+    background: var(--surface); color: var(--text); text-decoration: none;
+  }
+  .pp-row:hover { border-color: var(--rule-strong, var(--border-hover)); background: var(--surface-hover); }
+  .pp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pp-row-title { font-weight: 600; color: var(--ink); }
+  .pp-row-meta { grid-column: 1; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 13px; color: var(--text-secondary); }
+  .pp-row-meta span { display: inline-flex; align-items: center; gap: 0.3rem; }
+  .pp-row-len { grid-column: 2; grid-row: 1 / span 2; display: inline-flex; align-items: center; gap: 0.5rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pp-hint { text-align: center; font-size: 13px; color: var(--text-muted); margin: 0; }
+</style>
+
+<div class="pp-sites">
+  {% for g in groups %}
+  <section class="card" aria-labelledby="pp-site-{{ loop.index }}">
+    <div class="card-head">
+      <h2 id="pp-site-{{ loop.index }}">{{ g.domain }}<span class="num">{{ g.rows | length }}</span></h2>
+      <span class="card-action">{% if g.title %}{{ g.title }} · {% endif %}{{ g.host }}</span>
+    </div>
+    <div class="card-body">
+      <ul class="pp-rows">
+        {% for r in g.rows %}
+        <li>
+          <a class="pp-row" href="/dashboard/propose/{{ r.id }}{% if r.site %}?site={{ r.site }}{% endif %}">
+            <span class="pp-row-title">{{ r.title }}</span>
+            <span class="pp-row-len">{{ duration_label(r.duration_min) }} {{ ph.icon("paper-plane-tilt", 16) }}</span>
+            <span class="pp-row-meta">
+              {%- set loc = r.location_type %}
+              {%- if loc in ["link", "jitsi_auto", "webhook_auto"] %}<span>{{ ph.icon("video-camera", 14) }}{{ t("slots-location-video") }}</span>
+              {%- elif loc == "google_meet" %}<span>{{ ph.icon("video-camera", 14) }}{{ t("slots-location-google-meet") }}</span>
+              {%- elif loc == "phone" %}<span>{{ ph.icon("phone", 14) }}{{ t("slots-location-phone") }}</span>
+              {%- elif loc == "in_person" %}<span>{{ ph.icon("map-pin", 14) }}{{ t("etf-location-in-person") }}</span>
+              {%- endif %}
+              <span>{% if r.calendars %}{{ t("propose-checks", calendars=r.calendars) }}{% else %}{{ t("propose-checks-none") }}{% endif %}</span>
+              <span>/u/{{ username }}/{{ r.slug }}</span>
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% else %}
+  <section class="card">
+    <div class="card-body">
+      <p class="empty-line">{{ t("propose-no-meetings") }}</p>
+      <a class="ui-btn" href="/dashboard/event-types">{{ t("propose-no-meetings-link") }}</a>
+    </div>
+  </section>
+  {% endfor %}
+  {% if groups %}<p class="pp-hint">{{ t("propose-pick-hint") }}</p>{% endif %}
+</div>
+{% endblock %}

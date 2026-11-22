@@ -26,6 +26,8 @@ mod microsoft;
 mod notify;
 mod overview_stats;
 mod pending;
+// Fork: propose times.
+mod propose;
 mod public_pages;
 pub(crate) mod questions;
 // Fork: booking sites (sites.toml, skins).
@@ -98,6 +100,8 @@ pub use notify::run_reminder_loop;
 pub(crate) use notify::spawn_emails;
 use notify::*;
 use pending::*;
+// Fork: propose times.
+use propose::*;
 use public_pages::*;
 use sources::*;
 use teams::*;
@@ -1006,6 +1010,10 @@ pub async fn create_router(
         .route("/skin/{skin}/{file}", get(serve_skin))
         .route("/dashboard", get(dashboard))
         .route("/dashboard/event-types", get(dashboard_event_types))
+        // Fork: propose times.
+        .route("/dashboard/propose", get(propose_pick_meeting))
+        .route("/dashboard/propose/{event_type_id}", get(propose_pick_times))
+        .route("/dashboard/propose/{event_type_id}/week", get(propose_week))
         .route(
             "/dashboard/availability/default",
             get(dashboard_availability_default),

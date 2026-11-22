@@ -2505,3 +2505,55 @@ page-order-section-down = Liiguta { $section } alla
 page-order-type-up = Liiguta { $title } üles
 page-order-type-down = Liiguta { $title } alla
 page-order-not-listed = Avalikul lehel pole (välja lülitatud, sisemine või privaatne)
+
+# Fork: propose times.
+nav-propose-times = Paku aegu
+propose-title = Paku aegu
+propose-step-meeting = Kohtumine
+propose-step-times = Vali ajad
+propose-pick-sub = Vali pakutav kohtumine selle broneerimissaidi alt, kuhu külaline peaks jõudma.
+propose-times-sub = Klõpsa oma nädala vabadel aegadel. calrs teeb neist loendi, mille saad kleepida igasse e-kirja.
+propose-pick-hint = Igal kohtumisel on oma kestus, kalendrid ja broneerimislink. Muuda neid sündmuse tüübis.
+propose-checks = Kontrollib: { $calendars }
+propose-checks-none = Ei kontrolli ühtegi kalendrit
+propose-change = Muuda
+propose-empty = Klõpsa nädala vabal ajal, et seda pakkuda.
+propose-no-meetings = Pakkumiseks pole veel ühtegi kohtumist. See leht näitab sinu sisselülitatud avalikke sündmuse tüüpe.
+propose-no-meetings-link = Ava sündmuse tüübid
+propose-your-proposal = Sinu pakkumine
+propose-clear-all = Tühjenda kõik
+propose-snippet = Tekstilõik
+propose-guest-tz = Külalise ajavöönd
+propose-guest-tz-same = Sama mis minul ({ $city })
+propose-guest-label = Külaline
+propose-you-label = Sina
+propose-guest-time = %1 külaline
+propose-legend-busy = Hõivatud
+propose-legend-outside = Väljaspool aegu
+propose-legend-proposed = Pakutud
+propose-legend-guest-night = Külalise öö (21:00–08:00)
+propose-show-my-time = Näita ka minu aega
+propose-show-my-time-hint = Lisab iga aja järele sinu aja, kui külalise vöönd on erinev.
+propose-include-more = Lisa „Leia rohkem aegu”
+propose-include-more-hint = Lõpetab teksti lingiga kohtumise broneerimislehele.
+propose-copy-failed = Kopeerimine ebaõnnestus. Luba juurdepääs lõikelauale ja proovi uuesti.
+propose-remove-time = Eemalda
+propose-copy = Kopeeri tekstilõik
+propose-refused-past = See aeg on möödas
+propose-refused-busy = %1–%2 kattub sündmusega „%3”
+propose-refused-not-offered = %1 ei ole %2 jaoks pakutav
+propose-preview-busy = %1 · hõivatud
+propose-preview-not-offered = %1 · pole pakutav
+propose-today = Täna
+propose-hint = Klõpsa vabal ajal, et seda pakkuda
+propose-grid-label = Sinu nädal. Vabade aegade vahel liikumiseks kasuta nooleklahve.
+propose-busy-booked = Broneeritud: { $name }
+propose-snippet-header = Ajad vööndis %1
+propose-snippet-pick = Broneerimiseks klõpsa ajal.
+propose-snippet-more = Rohkem aegu leiad siit
+propose-load-failed = Seda nädalat ei õnnestunud laadida. Proovi uuesti.
+propose-copied =
+    { $count ->
+        [one] Kopeeriti { $count } aeg
+       *[other] Kopeeriti { $count } aega
+    }

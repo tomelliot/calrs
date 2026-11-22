@@ -550,3 +550,19 @@ auth-sso-no-email = Ihr Identitätsanbieter hat keine E-Mail-Adresse übermittel
 # Fork: the slot page's week timeline and booking dialog.
 tl-dialog-title = Bestätigen Sie Ihre Angaben
 tl-hint = Wählen Sie einen freien Termin im Kalender
+
+# Fork: propose times.
+propose-pick-sub = Wählen Sie den Termin, den Sie anbieten möchten, unter der Buchungsseite, auf der der Gast landen soll.
+propose-times-sub = Klicken Sie freie Zeiten in Ihrer Woche an. calrs schreibt sie als Liste, die Sie in jede E-Mail einfügen können.
+propose-pick-hint = Jeder Termin hat seine eigene Dauer, eigene Kalender und einen eigenen Buchungslink. Ändern Sie sie in der Terminart.
+propose-empty = Klicken Sie eine freie Zeit in der Woche an, um sie vorzuschlagen.
+propose-no-meetings = Noch kein Termin zum Vorschlagen. Diese Seite zeigt Ihre aktiven, öffentlichen Terminarten.
+propose-your-proposal = Ihr Vorschlag
+propose-you-label = Sie
+propose-show-my-time-hint = Fügt nach jeder Zeit Ihre eigene hinzu, wenn die Zone des Gasts abweicht.
+propose-hint = Klicken Sie eine freie Zeit an, um sie vorzuschlagen
+propose-grid-label = Ihre Woche. Mit den Pfeiltasten wechseln Sie zwischen freien Zeiten.
+propose-snippet-pick = Klicken Sie auf eine Zeit, um sie zu buchen.
+propose-snippet-more = Weitere Zeiten finden Sie hier
+propose-load-failed = Diese Woche konnte nicht geladen werden. Versuchen Sie es erneut.
+propose-copy-failed = Kopieren fehlgeschlagen. Erlauben Sie den Zugriff auf die Zwischenablage und versuchen Sie es erneut.

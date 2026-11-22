@@ -2505,3 +2505,55 @@ page-order-section-down = { $section } nach unten
 page-order-type-up = { $title } nach oben
 page-order-type-down = { $title } nach unten
 page-order-not-listed = Nicht auf der öffentlichen Seite (deaktiviert, intern oder privat)
+
+# Fork: propose times.
+nav-propose-times = Zeiten vorschlagen
+propose-title = Zeiten vorschlagen
+propose-step-meeting = Termin
+propose-step-times = Zeiten wählen
+propose-pick-sub = Wähle den Termin, den du anbieten willst, unter der Buchungsseite, auf der der Gast landen soll.
+propose-times-sub = Klicke freie Zeiten in deiner Woche an. calrs schreibt sie als Liste, die du in jede E-Mail einfügen kannst.
+propose-pick-hint = Jeder Termin hat seine eigene Dauer, eigene Kalender und einen eigenen Buchungslink. Ändere sie in der Terminart.
+propose-checks = Prüft { $calendars }
+propose-checks-none = Prüft keinen Kalender
+propose-change = Ändern
+propose-empty = Klicke eine freie Zeit in der Woche an, um sie vorzuschlagen.
+propose-no-meetings = Noch kein Termin zum Vorschlagen. Diese Seite zeigt deine aktiven, öffentlichen Terminarten.
+propose-no-meetings-link = Zu den Terminarten
+propose-your-proposal = Dein Vorschlag
+propose-clear-all = Alle entfernen
+propose-snippet = Textbaustein
+propose-guest-tz = Zeitzone des Gasts
+propose-guest-tz-same = Wie meine ({ $city })
+propose-guest-label = Gast
+propose-you-label = Du
+propose-guest-time = %1 Gast
+propose-legend-busy = Belegt
+propose-legend-outside = Außerhalb der Zeiten
+propose-legend-proposed = Vorgeschlagen
+propose-legend-guest-night = Nacht des Gasts (21:00–08:00)
+propose-show-my-time = Auch meine Zeit zeigen
+propose-show-my-time-hint = Fügt nach jeder Zeit deine eigene hinzu, wenn die Zone des Gasts abweicht.
+propose-include-more = „Weitere Zeiten finden“ anhängen
+propose-include-more-hint = Beendet den Text mit einem Link zur Buchungsseite des Termins.
+propose-copy-failed = Kopieren fehlgeschlagen. Erlaube den Zugriff auf die Zwischenablage und versuche es erneut.
+propose-remove-time = Entfernen
+propose-copy = Textbaustein kopieren
+propose-refused-past = Diese Zeit ist vorbei
+propose-refused-busy = %1–%2 überschneidet sich mit „%3“
+propose-refused-not-offered = %1 wird für %2 nicht angeboten
+propose-preview-busy = %1 · belegt
+propose-preview-not-offered = %1 · nicht angeboten
+propose-today = Heute
+propose-hint = Klicke eine freie Zeit an, um sie vorzuschlagen
+propose-grid-label = Deine Woche. Mit den Pfeiltasten wechselst du zwischen freien Zeiten.
+propose-busy-booked = Gebucht: { $name }
+propose-snippet-header = Zeiten in %1
+propose-snippet-pick = Klicke auf eine Zeit, um sie zu buchen.
+propose-snippet-more = Weitere Zeiten findest du hier
+propose-load-failed = Diese Woche konnte nicht geladen werden. Versuche es erneut.
+propose-copied =
+    { $count ->
+        [one] { $count } Zeit kopiert
+       *[other] { $count } Zeiten kopiert
+    }

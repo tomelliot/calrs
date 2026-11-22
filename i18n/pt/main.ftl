@@ -2505,3 +2505,55 @@ page-order-section-down = Mover { $section } para baixo
 page-order-type-up = Mover { $title } para cima
 page-order-type-down = Mover { $title } para baixo
 page-order-not-listed = Fora da página pública (desativada, interna ou privada)
+
+# Fork: propose times.
+nav-propose-times = Propor horários
+propose-title = Propor horários
+propose-step-meeting = Reunião
+propose-step-times = Escolher horários
+propose-pick-sub = Escolha a reunião a oferecer, sob o site de reservas em que o convidado deve chegar.
+propose-times-sub = Clique em horários livres da sua semana. O calrs transforma-os numa lista para colar em qualquer e-mail.
+propose-pick-hint = Cada reunião usa a sua própria duração, agendas e link de reserva. Altere-os no tipo de evento.
+propose-checks = Verifica { $calendars }
+propose-checks-none = Não verifica nenhuma agenda
+propose-change = Alterar
+propose-empty = Clique num horário livre da semana para o propor.
+propose-no-meetings = Ainda não há reuniões a propor. Esta página lista os seus tipos de evento ativos e públicos.
+propose-no-meetings-link = Ir para os tipos de evento
+propose-your-proposal = A sua proposta
+propose-clear-all = Limpar tudo
+propose-snippet = Trecho
+propose-guest-tz = Fuso horário do convidado
+propose-guest-tz-same = Igual ao meu ({ $city })
+propose-guest-label = Convidado
+propose-you-label = Você
+propose-guest-time = %1 convidado
+propose-legend-busy = Ocupado
+propose-legend-outside = Fora do horário
+propose-legend-proposed = Proposto
+propose-legend-guest-night = Noite do convidado (21:00–08:00)
+propose-show-my-time = Mostrar também a minha hora
+propose-show-my-time-hint = Acrescenta a sua hora depois de cada horário quando o fuso do convidado é diferente.
+propose-include-more = Incluir “Encontrar mais horários”
+propose-include-more-hint = Termina o texto com um link para a página de agendamento da reunião.
+propose-copy-failed = Não foi possível copiar. Permita o acesso à área de transferência e tente de novo.
+propose-remove-time = Remover
+propose-copy = Copiar trecho
+propose-refused-past = Esse horário já passou
+propose-refused-busy = %1–%2 sobrepõe-se a “%3”
+propose-refused-not-offered = %1 não é oferecido para %2
+propose-preview-busy = %1 · ocupado
+propose-preview-not-offered = %1 · indisponível
+propose-today = Hoje
+propose-hint = Clique num horário livre para o propor
+propose-grid-label = A sua semana. Use as setas para passar entre horários livres.
+propose-busy-booked = Reservado: { $name }
+propose-snippet-header = Horários em %1
+propose-snippet-pick = Clique num horário para o reservar.
+propose-snippet-more = Mais horários aqui
+propose-load-failed = Não foi possível carregar esta semana. Tente de novo.
+propose-copied =
+    { $count ->
+        [one] { $count } horário copiado
+       *[other] { $count } horários copiados
+    }

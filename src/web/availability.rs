@@ -2012,6 +2012,311 @@ pub(super) fn guest_to_host_local(
 
 /// Load an event type's booking window. A missing row yields the unlimited
 /// default, matching how the other per-event-type lookups degrade.
+// Fork: the slot computation of the REST API, shared with propose times.
+/// One bookable start of [`offered_slots`].
+pub(super) struct OfferedSlot {
+    pub(super) start: chrono::DateTime<Utc>,
+    pub(super) end: chrono::DateTime<Utc>,
+    /// The start's day and `HH:MM` in the guest zone asked for.
+    pub(super) guest_date: NaiveDate,
+    pub(super) guest_time: String,
+}
+
+/// The slots of event type `id` whose guest-local day is in `from..=to`,
+/// computed as its booking page computes them: the same calendar sync, busy
+/// source (the owner, or the team's members by scheduling mode) and
+/// `compute_slots`, over a window padded by a day each side. Shared by the
+/// REST API's slots and the propose times page (fork).
+pub(super) async fn offered_slots(
+    state: &AppState,
+    id: &str,
+    host_tz: Tz,
+    guest_tz: Tz,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<OfferedSlot>, sqlx::Error> {
+    let et: (i32, i32, i32, i32, Option<String>, String, String) = sqlx::query_as(
+        "SELECT et.duration_min, et.buffer_before, et.buffer_after, et.min_notice_min, et.team_id,
+                et.scheduling_mode, COALESCE(a.user_id, '')
+         FROM event_types et LEFT JOIN accounts a ON a.id = et.account_id WHERE et.id = ?",
+    )
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await?;
+    let (duration, buffer_before, buffer_after, min_notice, team_id, mode, owner) = et;
+    let now_host = Utc::now().with_timezone(&host_tz).naive_local();
+    let host_today = now_host.date();
+    let start_offset = ((from - host_today).num_days() - 1).max(0) as i32;
+    let end_offset = (to - host_today).num_days() as i32 + 2;
+    if end_offset <= 0 {
+        return Ok(Vec::new());
+    }
+    let days_ahead = (end_offset - start_offset).max(1);
+    let end_date = host_today + Duration::days((start_offset + days_ahead) as i64);
+    let window_end = end_date.and_hms_opt(23, 59, 59).unwrap_or(now_host);
+    let busy = match &team_id {
+        Some(team_id) => {
+            let mut sync_tasks = tokio::task::JoinSet::new();
+            for uid in team_member_ids(&state.pool, id, team_id).await {
+                let pool = state.pool.clone();
+                let key = state.secret_key.clone();
+                sync_tasks.spawn(async move {
+                    crate::commands::sync::sync_if_stale(&pool, &key, &uid).await;
+                });
+            }
+            while sync_tasks.join_next().await.is_some() {}
+            team_busy_source(
+                &state.pool,
+                id,
+                team_id,
+                mode == "collective",
+                now_host,
+                window_end,
+                host_tz,
+            )
+            .await
+        }
+        None => {
+            crate::commands::sync::sync_if_stale(&state.pool, &state.secret_key, &owner).await;
+            BusySource::Individual(
+                fetch_busy_times_for_user(
+                    &state.pool,
+                    &owner,
+                    now_host,
+                    window_end,
+                    host_tz,
+                    Some(id),
+                )
+                .await,
+            )
+        }
+    };
+    let days = compute_slots(
+        &state.pool,
+        id,
+        duration,
+        buffer_before,
+        buffer_after,
+        min_notice,
+        start_offset,
+        days_ahead,
+        get_booking_window(&state.pool, id).await,
+        host_tz,
+        guest_tz,
+        busy,
+        None,
+    )
+    .await;
+    let mut slots = Vec::new();
+    for slot in days.iter().flat_map(|d| &d.slots) {
+        let Ok(local) = NaiveDateTime::parse_from_str(
+            &format!("{} {}", slot.host_date, slot.host_time),
+            "%Y-%m-%d %H:%M",
+        ) else {
+            continue;
+        };
+        // The engine only offers wall times that name one instant.
+        let Some(start) = host_tz.from_local_datetime(&local).single() else {
+            continue;
+        };
+        let start = start.with_timezone(&Utc);
+        let guest_start = start.with_timezone(&guest_tz);
+        if guest_start.date_naive() < from || guest_start.date_naive() > to {
+            continue;
+        }
+        slots.push(OfferedSlot {
+            start,
+            end: start + Duration::minutes(duration as i64),
+            guest_date: guest_start.date_naive(),
+            guest_time: guest_start.format("%H:%M").to_string(),
+        });
+    }
+    Ok(slots)
+}
+
+// Fork: propose times.
+/// The step between two starts the slot engine walks for an event type:
+/// `slot_interval_min`, else its duration (as in `slots`).
+pub(super) async fn slot_interval(pool: &SqlitePool, et_id: &str, duration: i32) -> i32 {
+    sqlx::query_scalar::<_, Option<i32>>("SELECT slot_interval_min FROM event_types WHERE id = ?")
+        .bind(et_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .filter(|v| *v > 0)
+        .unwrap_or(duration)
+        .max(1)
+}
+
+// Fork: troubleshoot's titled busy events, shared with propose times.
+/// A calendar event that makes a user busy for an event type, with its title
+/// and calendar, as the troubleshoot view and the propose times page show it.
+pub(super) struct TitledEvent {
+    /// Wall-clock times in the zone asked for.
+    pub(super) start: NaiveDateTime,
+    pub(super) end: NaiveDateTime,
+    pub(super) summary: Option<String>,
+    pub(super) calendar: Option<String>,
+    /// False for a recurrence calrs cannot expand (blocked from its start).
+    pub(super) supported: bool,
+}
+
+/// The user's events on the calendars that block event type `et_id` (the
+/// filter of `fetch_busy_times_for_user`: synced calendars, the type's
+/// selection, else every busy one), cancelled and transparent ones skipped,
+/// recurrences expanded with `rrule::occurrences_in`, overlapping
+/// `[window_start, window_end)` in `host_tz`.
+pub(super) async fn titled_calendar_events(
+    pool: &SqlitePool,
+    user_id: &str,
+    et_id: &str,
+    window_start: NaiveDateTime,
+    window_end: NaiveDateTime,
+    host_tz: Tz,
+) -> Vec<TitledEvent> {
+    let start_iso = window_start.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let end_iso = window_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+    // Events keep their own zone's wall clock, so they are fetched with two
+    // days of slack and kept only when they reach the window once converted
+    // (#420).
+    let singles: Vec<(
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT e.start_at, e.end_at, e.summary, c.display_name, e.timezone
+         FROM events e
+         JOIN calendars c ON c.id = e.calendar_id
+         JOIN caldav_sources cs ON cs.id = c.source_id
+         JOIN accounts a ON a.id = cs.account_id
+         WHERE a.user_id = ? AND c.sync_enabled = 1
+           AND ((c.is_busy = 1 AND NOT EXISTS (SELECT 1 FROM event_type_calendars etc JOIN calendars sc ON sc.id = etc.calendar_id WHERE etc.event_type_id = ? AND sc.sync_enabled = 1))
+                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
+           AND (e.rrule IS NULL OR e.rrule = '') AND e.rdate = 0
+           AND (e.status IS NULL OR e.status != 'CANCELLED')
+           AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
+           AND ((e.start_at < ? AND e.end_at > ?)
+                OR (e.start_at <= strftime('%Y%m%dT%H%M%S', ?, '+2 days')
+                    AND e.end_at >= strftime('%Y%m%dT%H%M%S', ?, '-2 days')))
+         ORDER BY e.start_at",
+    )
+    .bind(user_id)
+    .bind(et_id)
+    .bind(et_id)
+    .bind(&end_iso)
+    .bind(&start_iso)
+    .bind(&end_iso)
+    .bind(&start_iso)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let mut out: Vec<TitledEvent> = singles
+        .into_iter()
+        .filter_map(|(s, e, summary, calendar, event_tz)| {
+            let start = convert_event_to_tz(parse_ical_datetime(&s)?, event_tz.as_deref(), host_tz);
+            let end = convert_event_to_tz(parse_ical_datetime(&e)?, event_tz.as_deref(), host_tz);
+            // An event that only touches the window at an edge takes none of it.
+            if end <= window_start || start >= window_end {
+                return None;
+            }
+            Some(TitledEvent {
+                start,
+                end,
+                summary,
+                calendar,
+                supported: true,
+            })
+        })
+        .collect();
+
+    #[allow(clippy::type_complexity)]
+    let recurring: Vec<(
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT e.start_at, e.end_at, COALESCE(e.rrule, ''), e.raw_ical, e.summary, c.display_name, e.timezone
+         FROM events e
+         JOIN calendars c ON c.id = e.calendar_id
+         JOIN caldav_sources cs ON cs.id = c.source_id
+         JOIN accounts a ON a.id = cs.account_id
+         WHERE a.user_id = ? AND c.sync_enabled = 1
+           AND ((c.is_busy = 1 AND NOT EXISTS (SELECT 1 FROM event_type_calendars etc JOIN calendars sc ON sc.id = etc.calendar_id WHERE etc.event_type_id = ? AND sc.sync_enabled = 1))
+                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
+           AND (e.status IS NULL OR e.status != 'CANCELLED')
+           AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
+           AND ((e.rrule IS NOT NULL AND e.rrule != '') OR e.rdate = 1)
+           AND (e.start_at <= ? OR e.start_at <= strftime('%Y%m%dT%H%M%S', ?, '+2 days'))",
+    )
+    .bind(user_id)
+    .bind(et_id)
+    .bind(et_id)
+    .bind(&end_iso)
+    .bind(&end_iso)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    for (s, e, rrule_str, raw_ical, summary, calendar, event_tz) in recurring {
+        let supported = crate::rrule::is_supported(&rrule_str);
+        for (start, end) in crate::rrule::occurrences_in(
+            &s,
+            &e,
+            &rrule_str,
+            raw_ical.as_deref(),
+            event_tz.as_deref(),
+            window_start,
+            window_end,
+            host_tz,
+        ) {
+            out.push(TitledEvent {
+                start,
+                end,
+                summary: summary.clone(),
+                calendar: calendar.clone(),
+                supported,
+            });
+        }
+    }
+    out
+}
+
+/// Names of the synced calendars whose events block event type `et_id`, by
+/// the filter of `fetch_busy_times_for_user` (fork: propose times).
+pub(super) async fn blocking_calendar_names(
+    pool: &SqlitePool,
+    user_id: &str,
+    et_id: &str,
+) -> Vec<String> {
+    sqlx::query_scalar(
+        "SELECT c.display_name
+         FROM calendars c
+         JOIN caldav_sources cs ON cs.id = c.source_id
+         JOIN accounts a ON a.id = cs.account_id
+         WHERE a.user_id = ? AND c.sync_enabled = 1
+           AND ((c.is_busy = 1 AND NOT EXISTS (SELECT 1 FROM event_type_calendars etc JOIN calendars sc ON sc.id = etc.calendar_id WHERE etc.event_type_id = ? AND sc.sync_enabled = 1))
+                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
+         ORDER BY c.display_name COLLATE NOCASE, c.id",
+    )
+    .bind(user_id)
+    .bind(et_id)
+    .bind(et_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|n: Option<String>| n.unwrap_or_default())
+    .filter(|n| !n.trim().is_empty())
+    .collect()
+}
+
 pub(super) async fn get_booking_window(pool: &SqlitePool, et_id: &str) -> BookingWindow {
     try_get_booking_window(pool, et_id)
         .await
@@ -2766,140 +3071,52 @@ pub(super) async fn troubleshoot(
     let day_start_iso = target_date.format("%Y-%m-%dT00:00:00").to_string();
     let day_end_iso = target_date.format("%Y-%m-%dT23:59:59").to_string();
 
-    // Non-recurring busy events for this date. Events keep their own zone's
-    // wall clock, so they are fetched with two days of slack and kept below
-    // only when they reach the day once converted (#420).
-    let raw_busy_events: Vec<(
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
-        "SELECT e.start_at, e.end_at, e.summary, c.display_name, e.timezone
-         FROM events e
-         JOIN calendars c ON c.id = e.calendar_id
-         JOIN caldav_sources cs ON cs.id = c.source_id
-         JOIN accounts a ON a.id = cs.account_id
-         WHERE a.user_id = ? AND c.sync_enabled = 1
-           AND ((c.is_busy = 1 AND NOT EXISTS (SELECT 1 FROM event_type_calendars etc JOIN calendars sc ON sc.id = etc.calendar_id WHERE etc.event_type_id = ? AND sc.sync_enabled = 1))
-                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
-           AND (e.rrule IS NULL OR e.rrule = '') AND e.rdate = 0
-           AND (e.status IS NULL OR e.status != 'CANCELLED')
-           AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
-           AND ((e.start_at < ? AND e.end_at > ?)
-                OR (e.start_at <= strftime('%Y%m%dT%H%M%S', ?, '+2 days')
-                    AND e.end_at >= strftime('%Y%m%dT%H%M%S', ?, '-2 days')))
-         ORDER BY e.start_at",
-    )
-    .bind(&user.id)
-    .bind(&et_id)
-    .bind(&et_id)
-    .bind(&day_end_iso)
-    .bind(&day_start_iso)
-    .bind(&day_end_iso)
-    .bind(&day_start_iso)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    let mut busy_events: Vec<(String, String, Option<String>, Option<String>)> = raw_busy_events
-        .iter()
-        .filter_map(|(s, e, summary, cal_name, event_tz)| {
-            let start = convert_event_to_tz(parse_ical_datetime(s)?, event_tz.as_deref(), host_tz);
-            let end = convert_event_to_tz(parse_ical_datetime(e)?, event_tz.as_deref(), host_tz);
-            // Keep an event of the day before or after when this type's
-            // buffers reach into the day, as the slot grid does. An event
-            // that only touches the day at a midnight (an absence ending at
-            // 00:00) takes none of it, buffers included.
-            let day_start = target_date.and_time(NaiveTime::MIN);
-            // Around an event, the slot grid blocks this type's buffer_after
-            // before it and its buffer_before after it.
-            if end + Duration::minutes(buf_before as i64) <= day_start
-                || start - Duration::minutes(buf_after as i64) >= day_start + Duration::days(1)
-            {
-                return None;
-            }
-            Some((
-                start.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                end.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                summary.clone(),
-                cal_name.clone(),
-            ))
-        })
-        .collect();
-
-    // Recurring busy events — expand into this date
-    let recurring_events: Vec<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
-        "SELECT e.start_at, e.end_at, COALESCE(e.rrule, ''), e.raw_ical, e.summary, c.display_name, e.timezone
-         FROM events e
-         JOIN calendars c ON c.id = e.calendar_id
-         JOIN caldav_sources cs ON cs.id = c.source_id
-         JOIN accounts a ON a.id = cs.account_id
-         WHERE a.user_id = ? AND c.sync_enabled = 1
-           AND ((c.is_busy = 1 AND NOT EXISTS (SELECT 1 FROM event_type_calendars etc JOIN calendars sc ON sc.id = etc.calendar_id WHERE etc.event_type_id = ? AND sc.sync_enabled = 1))
-                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
-           AND (e.status IS NULL OR e.status != 'CANCELLED')
-           AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
-           AND ((e.rrule IS NOT NULL AND e.rrule != '') OR e.rdate = 1)
-           AND (e.start_at <= ? OR e.start_at <= strftime('%Y%m%dT%H%M%S', ?, '+2 days'))",
-    )
-    .bind(&user.id)
-    .bind(&et_id)
-    .bind(&et_id)
-    .bind(&day_end_iso)
-    .bind(&day_end_iso)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    // Widened by this type's buffers, so an occurrence just outside the day
-    // whose buffer reaches into it is kept, as for single events.
+    // Widened by this type's buffers, so an event just outside the day whose
+    // buffer reaches into it is kept, as the slot grid does. An event that
+    // only touches the day at a midnight (an absence ending at 00:00) takes
+    // none of it, buffers included. Around an event, the slot grid blocks
+    // this type's buffer_after before it and its buffer_before after it.
     let ts_window_start =
         target_date.and_time(NaiveTime::MIN) - Duration::minutes(buf_before as i64);
     let ts_window_end = target_date
         .and_hms_opt(23, 59, 59)
         .unwrap_or(target_date.and_time(NaiveTime::MIN))
         + Duration::minutes(buf_after as i64);
-    for (s, e, rrule_str, raw_ical, summary, cal_name, event_tz) in &recurring_events {
-        // A rule calrs cannot expand is blocked as busy from its start: say
-        // so, or the host has no way to tell why the day is closed.
-        let detail = if crate::rrule::is_supported(rrule_str) {
-            cal_name.clone()
-        } else {
-            Some(tr1(
-                auth_user.lang,
-                "troubleshoot-detail-unsupported-recurrence",
-                "calendar",
-                cal_name.as_deref().unwrap_or_default(),
-            ))
-        };
-        for (cs, ce) in crate::rrule::occurrences_in(
-            s,
-            e,
-            rrule_str,
-            raw_ical.as_deref(),
-            event_tz.as_deref(),
+    // Fork: read through the helper propose times shares.
+    let busy_events: Vec<(String, String, Option<String>, Option<String>)> =
+        titled_calendar_events(
+            &state.pool,
+            &user.id,
+            &et_id,
             ts_window_start,
-            ts_window_end,
+            target_date.and_time(NaiveTime::MIN)
+                + Duration::days(1)
+                + Duration::minutes(buf_after as i64),
             host_tz,
-        ) {
-            busy_events.push((
-                cs.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                ce.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                summary.clone(),
-                detail.clone(),
-            ));
-        }
-    }
+        )
+        .await
+        .into_iter()
+        .map(|ev| {
+            // A rule calrs cannot expand is blocked as busy from its start:
+            // say so, or the host has no way to tell why the day is closed.
+            let detail = if ev.supported {
+                ev.calendar
+            } else {
+                Some(tr1(
+                    auth_user.lang,
+                    "troubleshoot-detail-unsupported-recurrence",
+                    "calendar",
+                    ev.calendar.as_deref().unwrap_or_default(),
+                ))
+            };
+            (
+                ev.start.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                ev.end.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                ev.summary,
+                detail,
+            )
+        })
+        .collect();
 
     // Bookings for this date: the same bookings that make this user busy on
     // the slot pages (their own, the ones assigned to them on someone else's

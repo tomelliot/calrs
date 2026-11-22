@@ -1,0 +1,23 @@
+{#- Fork: propose times. Page head of both steps: title, sentence, and the
+    step indicator; `step` is 1 or 2. -#}
+<style>
+  .pp-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem 2rem; flex-wrap: wrap; }
+  .pp-steps { display: flex; align-items: center; gap: 0.6rem; list-style: none; margin: 0 0 0.35rem; padding: 0; font-size: 14px; color: var(--text-muted); }
+  .pp-steps li { display: inline-flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
+  .pp-steps li + li::before { content: ""; width: 1.5rem; height: 1px; background: var(--border); margin-right: 0.15rem; }
+  .pp-steps a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 0.45rem; }
+  .pp-steps a:hover { color: var(--ink); }
+  .pp-dot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pp-steps [aria-current="step"] { color: var(--ink); font-weight: 600; }
+  .pp-steps [aria-current="step"] .pp-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+</style>
+<header class="page-header pp-head">
+  <div class="page-header-text">
+    <h1 class="page-title">{{ t("propose-title") }}</h1>
+    <p class="page-subtitle">{% if step == 1 %}{{ t("propose-pick-sub") }}{% else %}{{ t("propose-times-sub") }}{% endif %}</p>
+  </div>
+  <ol class="pp-steps">
+    <li{% if step == 1 %} aria-current="step"{% endif %}>{% if step == 2 %}<a href="/dashboard/propose">{% endif %}<span class="pp-dot">1</span>{{ t("propose-step-meeting") }}{% if step == 2 %}</a>{% endif %}</li>
+    <li{% if step == 2 %} aria-current="step"{% endif %}><span class="pp-dot">2</span>{{ t("propose-step-times") }}</li>
+  </ol>
+</header>

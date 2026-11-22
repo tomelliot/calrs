@@ -126,6 +126,7 @@ Every user-facing string goes through Fluent (`i18n/`).
 | `branding.rs` | Theme CSS, embed pages, static assets baked into the binary |
 | `listing.rs` | Shared pieces of long lists: case-blind `GLOB` search patterns bound into SQL (`ci_glob`, `ci_contains`), offset paging (`paged`: COUNT then `LIMIT`/`OFFSET` over a fixed `ORDER BY` ending with the id, `PageParams`, `Page`) and the page links (`Pager`, `href`, `page_part`, `partials/pager.html`) used by every paged dashboard list |
 | `format.rs` | Date and time labels for pages, emails and the dashboard |
+| `propose.rs` | Fork: propose times (`/dashboard/propose`): the meetings a user may propose under each booking site, the week JSON (offered starts from `offered_slots`, titled busy blocks, open windows), access checks; writes nothing |
 | `week_start.rs` | Calendar display preference: event override → account owner's default → site default (Monday); named weekday keys, independent of availability's `0=Sunday` storage |
 | `tests/` | Web tests, one file per area (below) |
 
@@ -138,7 +139,7 @@ with `use super::*` and sees those fixtures and every item of `web`:
 `ews_global`, `page_language`, `guards`, `api`, `api_doc`, `api_answers`, `oauth`, `mcp`, `questions`, `landing`, `pagination`,
 `directory`, `overview_stats`, `admin_stats`, `event_type_create`, `sms_spend`, `concurrency`, `google_copies`,
 `calendar_week_start`, `guest_footer`, plus `booking_time`, `pending_hold`,
-`writeback_failures`, `write_destinations`, `organizer`, `duplicate_event_type`, `time_off` and `webhooks`.
+`writeback_failures`, `write_destinations`, `organizer`, `duplicate_event_type`, `time_off`, `webhooks` and (fork) `propose`.
 
 ### `src/email/`
 
@@ -159,7 +160,7 @@ Call sites use `crate::email::name` whatever file `name` lives in.
 | Path | Owns |
 |---|---|
 | `migrations/` | SQL migrations: `001` to `081` numbered, then `YYYYMMDDHHMMSS_description.sql`, embedded by `build.rs` |
-| `templates/` | minijinja templates (`base.html`, `dashboard_base.html` and the pages extending them); `partials/` holds the shared pieces: the landing page partials (`landing_*.html`), `card_list.html` (list cards with the search in the band), `pager.html`, `phosphor.html` and `icons.html`, `public_logo.html`, `directory_entries.html` |
+| `templates/` | minijinja templates (`base.html`, `dashboard_base.html` and the pages extending them); `partials/` holds the shared pieces: the landing page partials (`landing_*.html`), the week grid of the slot page and propose times (`week_grid_*.html`, fork), `card_list.html` (list cards with the search in the band), `pager.html`, `phosphor.html` and `icons.html`, `public_logo.html`, `directory_entries.html` |
 | `i18n/{lang}/main.ftl` | Translations, English is the source of truth |
 | `assets/` | Files embedded in the binary (logo, fonts: Inter for booking pages, Archivo for the dashboard and landing pages, `embed.js`, vendored intl-tel-input, Phosphor icons, Swagger UI) |
 | `docs/src/` | User documentation (mdBook) |

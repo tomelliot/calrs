@@ -2610,3 +2610,57 @@ page-order-section-down = Przenieś { $section } niżej
 page-order-type-up = Przenieś { $title } wyżej
 page-order-type-down = Przenieś { $title } niżej
 page-order-not-listed = Nie ma go na stronie publicznej (wyłączone, wewnętrzne lub prywatne)
+
+# Fork: propose times.
+nav-propose-times = Zaproponuj terminy
+propose-title = Zaproponuj terminy
+propose-step-meeting = Spotkanie
+propose-step-times = Wybór terminów
+propose-pick-sub = Wybierz spotkanie do zaproponowania, pod stroną rezerwacji, na którą ma trafić gość.
+propose-times-sub = Kliknij wolne terminy w swoim tygodniu. calrs zapisze je jako listę do wklejenia w dowolnym e-mailu.
+propose-pick-hint = Każde spotkanie ma własną długość, kalendarze i link do rezerwacji. Zmień je w typie wydarzenia.
+propose-checks = Sprawdza: { $calendars }
+propose-checks-none = Nie sprawdza żadnego kalendarza
+propose-change = Zmień
+propose-empty = Kliknij wolny termin w tygodniu, aby go zaproponować.
+propose-no-meetings = Na razie nie ma spotkań do zaproponowania. Ta strona pokazuje twoje włączone, publiczne typy wydarzeń.
+propose-no-meetings-link = Przejdź do typów wydarzeń
+propose-your-proposal = Twoja propozycja
+propose-clear-all = Wyczyść wszystko
+propose-snippet = Fragment
+propose-guest-tz = Strefa czasowa gościa
+propose-guest-tz-same = Taka sama jak moja ({ $city })
+propose-guest-label = Gość
+propose-you-label = Ty
+propose-guest-time = %1 gość
+propose-legend-busy = Zajęty
+propose-legend-outside = Poza godzinami
+propose-legend-proposed = Zaproponowane
+propose-legend-guest-night = Noc gościa (21:00–08:00)
+propose-show-my-time = Pokaż też mój czas
+propose-show-my-time-hint = Dodaje twój czas po każdym terminie, gdy strefa gościa jest inna.
+propose-include-more = Dodaj „Znajdź inne terminy”
+propose-include-more-hint = Kończy tekst linkiem do strony rezerwacji spotkania.
+propose-copy-failed = Nie udało się skopiować. Zezwól na dostęp do schowka i spróbuj ponownie.
+propose-remove-time = Usuń
+propose-copy = Kopiuj fragment
+propose-refused-past = Ten termin już minął
+propose-refused-busy = %1–%2 nakłada się na „%3”
+propose-refused-not-offered = %1 nie jest dostępne dla %2
+propose-preview-busy = %1 · zajęty
+propose-preview-not-offered = %1 · niedostępne
+propose-today = Dziś
+propose-hint = Kliknij wolny termin, aby go zaproponować
+propose-grid-label = Twój tydzień. Użyj strzałek, aby przechodzić między wolnymi terminami.
+propose-busy-booked = Zarezerwowane: { $name }
+propose-snippet-header = Godziny w strefie %1
+propose-snippet-pick = Kliknij termin, aby go zarezerwować.
+propose-snippet-more = Więcej terminów tutaj
+propose-load-failed = Nie udało się wczytać tego tygodnia. Spróbuj ponownie.
+propose-copied =
+    { $count ->
+        [one] Skopiowano { $count } termin
+        [few] Skopiowano { $count } terminy
+        [many] Skopiowano { $count } terminów
+       *[other] Skopiowano { $count } terminu
+    }

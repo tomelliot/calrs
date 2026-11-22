@@ -1197,10 +1197,10 @@ pub(super) async fn event_type_slots(
     Ok(ok(StatusCode::OK, to_json(&answer)))
 }
 
-/// The slots of event type `id` whose guest-local day is in `from..=to`,
-/// computed as its booking page computes them: the same calendar sync, busy
-/// source (the owner, or the team's members by scheduling mode) and
-/// `compute_slots`, over a window padded by a day each side.
+// Fork: the core moved to `availability::offered_slots`, shared with propose times.
+/// The slots of event type `id` whose guest-local day is in `from..=to`, as
+/// its booking page offers them ([`offered_slots`], shared with the propose
+/// times page).
 async fn api_slots(
     state: &AppState,
     id: &str,
@@ -1209,104 +1209,16 @@ async fn api_slots(
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<Vec<Slot>, ApiError> {
-    let et: (i32, i32, i32, i32, Option<String>, String, String) = sqlx::query_as(
-        "SELECT et.duration_min, et.buffer_before, et.buffer_after, et.min_notice_min, et.team_id,
-                et.scheduling_mode, COALESCE(a.user_id, '')
-         FROM event_types et LEFT JOIN accounts a ON a.id = et.account_id WHERE et.id = ?",
-    )
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await?;
-    let (duration, buffer_before, buffer_after, min_notice, team_id, mode, owner) = et;
-    let now_host = Utc::now().with_timezone(&host_tz).naive_local();
-    let host_today = now_host.date();
-    let start_offset = ((from - host_today).num_days() - 1).max(0) as i32;
-    let end_offset = (to - host_today).num_days() as i32 + 2;
-    if end_offset <= 0 {
-        return Ok(Vec::new());
-    }
-    let days_ahead = (end_offset - start_offset).max(1);
-    let end_date = host_today + Duration::days((start_offset + days_ahead) as i64);
-    let window_end = end_date.and_hms_opt(23, 59, 59).unwrap_or(now_host);
-    let busy = match &team_id {
-        Some(team_id) => {
-            let mut sync_tasks = tokio::task::JoinSet::new();
-            for uid in team_member_ids(&state.pool, id, team_id).await {
-                let pool = state.pool.clone();
-                let key = state.secret_key.clone();
-                sync_tasks.spawn(async move {
-                    crate::commands::sync::sync_if_stale(&pool, &key, &uid).await;
-                });
-            }
-            while sync_tasks.join_next().await.is_some() {}
-            team_busy_source(
-                &state.pool,
-                id,
-                team_id,
-                mode == "collective",
-                now_host,
-                window_end,
-                host_tz,
-            )
-            .await
-        }
-        None => {
-            crate::commands::sync::sync_if_stale(&state.pool, &state.secret_key, &owner).await;
-            BusySource::Individual(
-                fetch_busy_times_for_user(
-                    &state.pool,
-                    &owner,
-                    now_host,
-                    window_end,
-                    host_tz,
-                    Some(id),
-                )
-                .await,
-            )
-        }
-    };
-    let days = compute_slots(
-        &state.pool,
-        id,
-        duration,
-        buffer_before,
-        buffer_after,
-        min_notice,
-        start_offset,
-        days_ahead,
-        get_booking_window(&state.pool, id).await,
-        host_tz,
-        guest_tz,
-        busy,
-        None,
-    )
-    .await;
-    let mut slots = Vec::new();
-    for slot in days.iter().flat_map(|d| &d.slots) {
-        let Ok(local) = NaiveDateTime::parse_from_str(
-            &format!("{} {}", slot.host_date, slot.host_time),
-            "%Y-%m-%d %H:%M",
-        ) else {
-            continue;
-        };
-        // The engine only offers wall times that name one instant.
-        let Some(start) = host_tz.from_local_datetime(&local).single() else {
-            continue;
-        };
-        let start = start.with_timezone(&Utc);
-        let guest_start = start.with_timezone(&guest_tz);
-        if guest_start.date_naive() < from || guest_start.date_naive() > to {
-            continue;
-        }
-        let end = start + Duration::minutes(duration as i64);
-        slots.push(Slot {
-            start: start.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-            end: end.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-            date: guest_start.format("%Y-%m-%d").to_string(),
-            time: guest_start.format("%H:%M").to_string(),
-        });
-    }
-    Ok(slots)
+    Ok(offered_slots(state, id, host_tz, guest_tz, from, to)
+        .await?
+        .into_iter()
+        .map(|slot| Slot {
+            start: slot.start.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            end: slot.end.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            date: slot.guest_date.format("%Y-%m-%d").to_string(),
+            time: slot.guest_time,
+        })
+        .collect())
 }
 
 // --- Bookings ---

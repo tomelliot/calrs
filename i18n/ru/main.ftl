@@ -2631,3 +2631,57 @@ page-order-section-down = Переместить «{ $section }» вниз
 page-order-type-up = Переместить «{ $title }» вверх
 page-order-type-down = Переместить «{ $title }» вниз
 page-order-not-listed = Не показывается на публичной странице (выключен, внутренний или закрытый)
+
+# Fork: propose times.
+nav-propose-times = Предложить время
+propose-title = Предложить время
+propose-step-meeting = Встреча
+propose-step-times = Выбор времени
+propose-pick-sub = Выберите встречу, которую хотите предложить, в разделе сайта бронирования, на который попадёт гость.
+propose-times-sub = Нажмите на свободное время в вашей неделе. calrs составит из него список, который можно вставить в любое письмо.
+propose-pick-hint = У каждой встречи своя длительность, свои календари и своя ссылка для бронирования. Измените их в типе встречи.
+propose-checks = Проверяет: { $calendars }
+propose-checks-none = Не проверяет ни один календарь
+propose-change = Изменить
+propose-empty = Нажмите на свободное время в неделе, чтобы предложить его.
+propose-no-meetings = Пока нет встреч для предложения. Здесь показаны ваши включённые публичные типы встреч.
+propose-no-meetings-link = Перейти к типам встреч
+propose-your-proposal = Ваше предложение
+propose-clear-all = Очистить всё
+propose-snippet = Фрагмент
+propose-guest-tz = Часовой пояс гостя
+propose-guest-tz-same = Как у меня ({ $city })
+propose-guest-label = Гость
+propose-you-label = Вы
+propose-guest-time = %1 у гостя
+propose-legend-busy = Занято
+propose-legend-outside = Вне часов
+propose-legend-proposed = Предложено
+propose-legend-guest-night = Ночь у гостя (21:00–08:00)
+propose-show-my-time = Показывать и моё время
+propose-show-my-time-hint = Добавляет ваше время после каждого, если пояс гостя другой.
+propose-include-more = Добавить «Другие варианты времени»
+propose-include-more-hint = Завершает текст ссылкой на страницу бронирования встречи.
+propose-copy-failed = Не удалось скопировать. Разрешите доступ к буферу обмена и попробуйте снова.
+propose-remove-time = Убрать
+propose-copy = Скопировать фрагмент
+propose-refused-past = Это время уже прошло
+propose-refused-busy = %1–%2 пересекается с «%3»
+propose-refused-not-offered = %1 недоступно для %2
+propose-preview-busy = %1 · занято
+propose-preview-not-offered = %1 · недоступно
+propose-today = Сегодня
+propose-hint = Нажмите на свободное время, чтобы предложить его
+propose-grid-label = Ваша неделя. Используйте стрелки, чтобы переходить между свободными временами.
+propose-busy-booked = Забронировано: { $name }
+propose-snippet-header = Время указано в поясе %1
+propose-snippet-pick = Нажмите на время, чтобы забронировать его.
+propose-snippet-more = Другое время можно выбрать здесь
+propose-load-failed = Не удалось загрузить эту неделю. Попробуйте ещё раз.
+propose-copied =
+    { $count ->
+        [one] Скопирован { $count } вариант
+        [few] Скопировано { $count } варианта
+        [many] Скопировано { $count } вариантов
+       *[other] Скопировано { $count } варианта
+    }

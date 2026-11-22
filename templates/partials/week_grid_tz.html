@@ -1,0 +1,22 @@
+{#- Fork: the timezone row under the week grid, shared by the slot page
+    ("Times shown in") and the propose times page ("Guest's time zone").
+    `groups` comes from timezone_options(). With `first_label`, a first
+    option (`first_value`) is the one selected. -#}
+{% macro tz_select(select_id, label, groups, title="", first_label="", first_value="") -%}
+<label class="tl-foot-tz">
+  <span>{{ label }}</span>
+  <span class="tl-select-plain">
+    <select id="{{ select_id }}"{% if title %} title="{{ title }}"{% endif %}>
+      {% if first_label %}<option value="{{ first_value }}" selected>{{ first_label }}</option>{% endif %}
+      {% for group in groups %}
+        <optgroup label="{{ group.label }}">
+        {% for tz in group.options %}
+          <option value="{{ tz.value }}"{% if tz.selected and not first_label %} selected{% endif %}>{{ tz.label }}</option>
+        {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+    <svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </span>
+</label>
+{%- endmacro %}

@@ -1054,21 +1054,8 @@
   {# The owner fixed the timezone to the event's own: no picker (so no browser auto-detect either), just a note. #}
   <span class="tl-foot-tz" id="tz-fixed-note">{{ ph.icon("globe", 14) }} {{ t("slots-tz-fixed", tz=embed_tz_label) }}</span>
   {% else %}
-  <label class="tl-foot-tz">
-    <span>{{ t("tl-times-shown-in") }}</span>
-    <span class="tl-select-plain">
-      <select id="tz-select" title="{{ t('slots-tz-label') }}">
-        {% for group in tz_options %}
-          <optgroup label="{{ group.label }}">
-          {% for tz in group.options %}
-            <option value="{{ tz.value }}"{% if tz.selected %} selected{% endif %}>{{ tz.label }}</option>
-          {% endfor %}
-          </optgroup>
-        {% endfor %}
-      </select>
-      <svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-    </span>
-  </label>
+  {% import "partials/week_grid_tz.html" as wgtz %}
+  {{ wgtz.tz_select("tz-select", t("tl-times-shown-in"), tz_options, title=t("slots-tz-label")) }}
   {% endif %}
   {% endif %}
   {% include "partials/site_footer.html" %}

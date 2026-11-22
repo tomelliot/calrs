@@ -18,7 +18,11 @@ This fork of [olivierlambert/calrs](https://github.com/olivierlambert/calrs) ser
 | Language menu: a `calrs_lang` cookie stands in for `Accept-Language` | `timeline_middleware` |
 | Site footer as a partial, so the slot page places it in its footer row | `templates/partials/site_footer.html`, `templates/base.html` |
 | `tl-*` and `etf-view-month-short` strings | `i18n/*/main.ftl` |
-| Tests | `src/web/sites.rs`, `src/web/tests/sites.rs`, `src/web/timeline.rs`, `src/web/tests/timeline.rs` |
+| Propose times (`/dashboard/propose`): pick a meeting under a booking site, click open times in a week, copy them as an email snippet whose times open the booking form at that time. Nothing is stored | `src/web/propose.rs` (new), routes and `mod propose` in `src/web/mod.rs`, `templates/propose_meeting.html`, `templates/propose_times.html`, `templates/partials/propose_head.html` (new), sidebar link in `templates/dashboard_base.html`, Phosphor `paper-plane-tilt` |
+| Slot computation shared by the REST API and propose times (`offered_slots`), the titled busy events of troubleshoot and propose times (`titled_calendar_events`), `blocking_calendar_names`, `slot_interval` | `src/web/availability.rs`, `api_slots` in `src/web/api.rs` |
+| Week grid shared by the slot page and propose times: axis and zone, day headers, hatched closed time, open regions, snapped preview, selected blocks, keyboard, header bar, legend pills, the timezone row, and page layers (busy blocks, proposals, guest hours and night) | `templates/partials/week_grid_style.html`, `week_grid_script.html`, `week_grid_tz.html` (new); `timeline_style.html` and `timeline_script.html` keep the slot page layout, mini calendar and booking dialog; `templates/slots.html` uses the timezone row |
+| `nav-propose-times`, `propose-*` strings | `i18n/*/main.ftl` |
+| Tests | `src/web/sites.rs`, `src/web/tests/sites.rs`, `src/web/timeline.rs`, `src/web/tests/timeline.rs`, `src/web/tests/propose.rs` |
 
 Every hook in an upstream file carries a `Fork:` comment: `git grep -n "Fork:"` lists them.
 

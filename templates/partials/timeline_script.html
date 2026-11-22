@@ -9,7 +9,9 @@
     the booking form of that start in a dialog: `…/book?…&partial=1` renders
     the form alone, and it posts to the usual booking handler. In reschedule
     mode, in an embed, or when the form cannot be fetched, the start's link is
-    followed instead. -#}
+    followed instead. The grid itself is the shared week grid of
+    partials/week_grid_script.html. -#}
+{% include "partials/week_grid_script.html" %}
 <dialog class="tl-dlg" id="tl-dlg" aria-labelledby="tl-dlg-title">
   <button type="button" class="tl-icon-btn tl-dlg-close" id="tl-dlg-close" aria-label="{{ t('tl-dialog-close') }}">
     <svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -112,13 +114,6 @@ window.calrsTimeline = function(api) {
     });
     return (cache.days[ds] = { starts: starts, regions: regions, byMin: byMin });
   }
-  // The latest offered start at or before minute t whose meeting covers t.
-  function startAt(ds, t) {
-    var st = dayInfo(ds).starts, best = null;
-    for (var i = 0; i < st.length; i++) if (st[i] <= t && t < st[i] + DUR) best = st[i];
-    return best;
-  }
-
   /* ---------- State ---------- */
   var mq = window.matchMedia('(max-width: 900px)');
   var state = { narrow: mq.matches, day: null, selected: null, shownKey: '', miniMonth: '', hintGone: false };
@@ -175,130 +170,40 @@ window.calrsTimeline = function(api) {
     return [day];
   }
 
-  /* ---------- Skeleton ---------- */
-  var tl, tlDays, tlCols, tlAxis, tlScroll, tlTz, hint, tlEmpty;
+  /* ---------- Grid ---------- */
+  // The shared week grid; made again when the page replaced its content.
+  var grid = null;
   function skeleton() {
-    if (tl && weekView.contains(tl)) return;
-    weekView.innerHTML = '';
-    tl = el('div', 'tl');
-    var head = el('div', 'tl-head');
-    var gutter = el('div', 'tl-gutter');
-    tlTz = el('span', 'tl-tz');
-    gutter.appendChild(tlTz);
-    tlDays = el('div', 'tl-days');
-    head.appendChild(gutter);
-    head.appendChild(tlDays);
-    tlScroll = el('div', 'tl-scroll');
-    var body = el('div', 'tl-body');
-    body.setAttribute('role', 'group');
-    body.setAttribute('aria-label', T.gridLabel);
-    tlAxis = el('div', 'tl-axis');
-    tlAxis.setAttribute('aria-hidden', 'true');
-    tlCols = el('div', 'tl-cols');
-    body.appendChild(tlAxis);
-    body.appendChild(tlCols);
-    tlScroll.appendChild(body);
-    hint = el('div', 'tl-hint' + (state.hintGone ? ' is-gone' : ''));
-    hint.setAttribute('aria-hidden', 'true');
-    hint.innerHTML = '<span class="tl-hint-dot"><svg class="tl-icon" viewBox="0 0 24 24"><path d="M9 9l10 4-4 1.5L13.5 19z"/><path d="M5 3.5v2.5M2.5 6H5M3.6 3.6l1.8 1.8M8.5 3.6L7 5.1M3.6 8.5L5.1 7"/></svg></span>';
-    hint.appendChild(document.createTextNode(T.hint));
-    tlEmpty = el('p', 'tl-empty');
-    tlEmpty.hidden = true;
-    tl.appendChild(head);
-    tl.appendChild(tlScroll);
-    tl.appendChild(hint);
-    tl.appendChild(tlEmpty);
-    if (!api.canBook) tl.classList.add('is-view-only');
-    weekView.appendChild(tl);
-    wireGrid();
-    state.shownKey = '';
-  }
-  function hideHint() { state.hintGone = true; if (hint) hint.classList.add('is-gone'); }
-
-  /* ---------- Rendering ---------- */
-  var HOUR_PX = 64;
-  function pxPerMin() { return HOUR_PX / 60; }
-
-  function renderAxis() {
-    tlAxis.innerHTML = '';
-    for (var h = 1; h < 24; h++) {
-      var s = el('span', '', fmtAxis(h));
-      s.style.top = (h * HOUR_PX) + 'px';
-      tlAxis.appendChild(s);
-    }
-  }
-
-  function block(cls, min, text) {
-    var b = el('div', 'tl-block ' + cls, text);
-    b.style.top = (min * pxPerMin()) + 'px';
-    var h = Math.min(DUR, 1440 - min) * pxPerMin();
-    b.style.height = h + 'px';
-    if (h < 26) b.classList.add('is-short');
-    return b;
+    if (grid && weekView.contains(grid.el)) return;
+    grid = window.calrsWeekGrid({
+      mount: weekView,
+      duration: DUR,
+      labels: { grid: T.gridLabel, hint: state.hintGone ? '' : T.hint },
+      formatTime: fmtTime,
+      formatAxis: fmtAxis,
+      slotHref: function(ds, min) { return api.slotHref(dayInfo(ds).byMin[min]); },
+      slotLabel: function(ds, min) { return sub(T.slotLabel, longDate(parse(ds)), fmtTime(min), fmtTime(min + DUR)); },
+      onSelect: choose,
+      viewOnly: !api.canBook,
+      viewOnlyTitle: api.inviteTitle
+    });
+    grid.el.addEventListener('mousemove', function() { state.hintGone = true; });
+    grid.el.addEventListener('focusin', function() { state.hintGone = true; });
   }
 
   function renderGrid() {
     var dates = visibleDates();
     var pending = !!document.getElementById('deferred-loader');
-    tl.style.setProperty('--tl-n', dates.length);
-    tlDays.innerHTML = '';
-    tlCols.innerHTML = '';
-    var any = false, firstSlot = null, keepSlot = null, earliestMin = null;
-
-    dates.forEach(function(d) {
-      var ds = iso(d);
-      var head = el('div', 'tl-dayname' + (ds === todayDate ? ' is-today' : ''));
-      head.appendChild(document.createTextNode(WEEKDAYS[d.getDay()] + ' '));
-      head.appendChild(el('b', '', String(d.getDate())));
-      tlDays.appendChild(head);
-
-      var col = el('div', 'tl-day');
-      col.setAttribute('data-date', ds);
-      var info = dayInfo(ds);
-      info.regions.forEach(function(r) {
-        var o = el('div', 'tl-open');
-        o.style.top = (r[0] * pxPerMin()) + 'px';
-        o.style.height = ((Math.min(r[1], 1440) - r[0]) * pxPerMin()) + 'px';
-        col.appendChild(o);
-      });
-      info.starts.forEach(function(s) {
-        any = true;
-        if (earliestMin === null || s < earliestMin) earliestMin = s;
-        var a = el('a', 'tl-slot', fmtTime(s));
-        a.href = api.slotHref(info.byMin[s]);
-        a.tabIndex = -1;
-        a.style.top = (s * pxPerMin()) + 'px';
-        var h = Math.min(DUR, 1440 - s) * pxPerMin();
-        a.style.height = h + 'px';
-        if (h < 26) a.classList.add('is-short');
-        a.setAttribute('data-min', s);
-        a.setAttribute('aria-label', sub(T.slotLabel, longDate(d), fmtTime(s), fmtTime(s + DUR)));
-        if (!api.canBook) { a.setAttribute('aria-disabled', 'true'); a.title = api.inviteTitle; }
-        col.appendChild(a);
-        if (!firstSlot) firstSlot = a;
-        if (state.selected && state.selected.ds === ds && state.selected.min === s) keepSlot = a;
-      });
-      var pv = block('tl-preview', 0, '');
-      pv.hidden = true;
-      col.appendChild(pv);
-      if (state.selected && state.selected.ds === ds) col.appendChild(block('tl-selected', state.selected.min, fmtTime(state.selected.min)));
-      col.appendChild(el('div', 'tl-lines'));
-      tlCols.appendChild(col);
+    grid.render({
+      days: dates.map(function(d) {
+        var ds = iso(d), info = dayInfo(ds);
+        return { ds: ds, weekday: WEEKDAYS[d.getDay()], dayNum: d.getDate(), today: ds === todayDate,
+          starts: info.starts, regions: info.regions };
+      }),
+      zone: zoneLabel(dates[0]),
+      selected: state.selected ? [state.selected] : [],
+      empty: pending ? T.loading : (state.narrow ? T.emptyDay : T.emptyWeek)
     });
-
-    var roving = keepSlot || firstSlot;
-    if (roving) roving.tabIndex = 0;
-    tlEmpty.textContent = pending ? T.loading : (state.narrow ? T.emptyDay : T.emptyWeek);
-    tlEmpty.hidden = any;
-    tlTz.textContent = zoneLabel(dates[0]);
-
-    // On a new week (or day), scroll to an hour before its first start.
-    var key = iso(dates[0]) + '/' + dates.length;
-    if (key !== state.shownKey) {
-      state.shownKey = key;
-      var top = earliestMin === null ? 7 * 60 : Math.max(0, earliestMin - 60);
-      tlScroll.scrollTop = Math.max(0, top * pxPerMin() - 12);
-    }
   }
 
   function renderOffsetNote(dates) {
@@ -307,7 +212,7 @@ window.calrsTimeline = function(api) {
     var text = api.offsetNote(dates.map(iso).filter(function(ds) { return dayInfo(ds).starts.length; }));
     if (!text) return;
     var note = el('div', 'slot-offset-note', text);
-    weekView.insertBefore(note, tl);
+    weekView.insertBefore(note, grid.el);
   }
 
   function monthTitle(dates) {
@@ -317,18 +222,7 @@ window.calrsTimeline = function(api) {
     return MONTHS[a.getMonth()] + ' ' + a.getFullYear() + ' – ' + MONTHS[b.getMonth()] + ' ' + b.getFullYear();
   }
 
-  function navButton(label, dir, enabled, onClick) {
-    var b = el('button', '');
-    b.type = 'button';
-    b.setAttribute('aria-label', label);
-    b.title = label;
-    b.innerHTML = dir < 0
-      ? '<svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>'
-      : '<svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
-    b.disabled = !enabled;
-    b.addEventListener('click', onClick);
-    return b;
-  }
+  var navButton = window.calrsWeekGrid.navButton;
 
   // Shows the week (or day) holding `d`, loading its month first.
   function go(d) {
@@ -446,100 +340,11 @@ window.calrsTimeline = function(api) {
     cache = { data: null, days: {} };
     noteLoaded();
     skeleton();
-    clearPreview();
     var dates = visibleDates();
-    renderAxis();
     renderGrid();
     renderOffsetNote(dates);
     renderHeader(dates);
     renderMini(dates, keepMini === true);
-  }
-
-  /* ---------- Pointer and keyboard ---------- */
-  var previewCol = null;
-  function clearPreview() {
-    if (!previewCol) return;
-    var pv = previewCol.querySelector('.tl-preview');
-    if (pv) pv.hidden = true;
-    previewCol.classList.remove('has-preview');
-    previewCol = null;
-  }
-  function pointerStart(e) {
-    var col = e.target.closest ? e.target.closest('.tl-day') : null;
-    if (!col) return null;
-    var t = (e.clientY - col.getBoundingClientRect().top) / pxPerMin();
-    var ds = col.getAttribute('data-date');
-    var s = startAt(ds, t);
-    return s === null ? { col: col } : { col: col, ds: ds, min: s };
-  }
-  function slotEl(ds, min) {
-    var col = tlCols.querySelector('.tl-day[data-date="' + ds + '"]');
-    return col && col.querySelector('.tl-slot[data-min="' + min + '"]');
-  }
-  function focusSlot(from, to) {
-    if (!to) return;
-    if (from) from.tabIndex = -1;
-    to.tabIndex = 0;
-    to.focus();
-    hideHint();
-  }
-  function wireGrid() {
-    tlCols.addEventListener('mousemove', function(e) {
-      var p = pointerStart(e);
-      if (!p || p.min === undefined) { clearPreview(); return; }
-      if (previewCol !== p.col) clearPreview();
-      var pv = p.col.querySelector('.tl-preview');
-      pv.style.top = (p.min * pxPerMin()) + 'px';
-      pv.textContent = fmtTime(p.min);
-      pv.hidden = false;
-      p.col.classList.add('has-preview');
-      previewCol = p.col;
-      hideHint();
-    });
-    tlCols.addEventListener('mouseleave', clearPreview);
-    tlCols.addEventListener('focusin', hideHint);
-    tlCols.addEventListener('click', function(e) {
-      var a = e.target.closest('.tl-slot');
-      if (a) {
-        e.preventDefault();
-        choose(a.parentNode.getAttribute('data-date'), +a.getAttribute('data-min'));
-        return;
-      }
-      var p = pointerStart(e);
-      if (p && p.min !== undefined) choose(p.ds, p.min);
-    });
-    tlCols.addEventListener('keydown', function(e) {
-      var slot = e.target.closest('.tl-slot');
-      if (!slot) return;
-      var col = slot.parentNode;
-      var list = Array.prototype.slice.call(col.querySelectorAll('.tl-slot'));
-      var i = list.indexOf(slot), to = null;
-      switch (e.key) {
-        case 'ArrowUp': to = list[i - 1]; break;
-        case 'ArrowDown': to = list[i + 1]; break;
-        case 'Home': to = list[0]; break;
-        case 'End': to = list[list.length - 1]; break;
-        case ' ': e.preventDefault(); slot.click(); return;
-        case 'ArrowLeft':
-        case 'ArrowRight':
-          var cols = Array.prototype.slice.call(tlCols.querySelectorAll('.tl-day'));
-          var step = e.key === 'ArrowLeft' ? -1 : 1;
-          var min = +slot.getAttribute('data-min');
-          for (var c = cols.indexOf(col) + step; c >= 0 && c < cols.length; c += step) {
-            var cand = cols[c].querySelectorAll('.tl-slot');
-            if (!cand.length) continue;
-            to = cand[0];
-            for (var k = 0; k < cand.length; k++) {
-              if (Math.abs(+cand[k].getAttribute('data-min') - min) < Math.abs(+to.getAttribute('data-min') - min)) to = cand[k];
-            }
-            break;
-          }
-          break;
-        default: return;
-      }
-      e.preventDefault();
-      focusSlot(slot, to);
-    });
   }
 
   /* ---------- Booking dialog ---------- */
@@ -557,8 +362,8 @@ window.calrsTimeline = function(api) {
   }
 
   function placeDialog() {
-    if (state.narrow || !tl) { dlg.classList.remove('is-placed'); dlg.style.left = dlg.style.top = ''; return; }
-    var r = tl.getBoundingClientRect();
+    if (state.narrow || !grid) { dlg.classList.remove('is-placed'); dlg.style.left = dlg.style.top = ''; return; }
+    var r = grid.el.getBoundingClientRect();
     dlg.classList.add('is-placed');
     var w = dlg.offsetWidth, h = dlg.offsetHeight;
     var left = r.left + (r.width - w) / 2;
@@ -593,9 +398,9 @@ window.calrsTimeline = function(api) {
   function openDialog(ds, min, href) {
     var seq = ++dlgSeq;
     state.selected = { ds: ds, min: min };
-    returnFocus = slotEl(ds, min);
-    hideHint();
-    clearPreview();
+    returnFocus = grid.slotEl(ds, min);
+    grid.hideHint();
+    grid.clearPreview();
     renderGrid();
     dlgBody.innerHTML = '<div class="tl-dlg-loading"><span></span></div>';
     dlg.showModal();
@@ -640,10 +445,10 @@ window.calrsTimeline = function(api) {
       var sel = state.selected;
       state.selected = null;
       dlgBody.innerHTML = '';
-      if (api.state().view === 'week' && tl) renderGrid();
+      if (api.state().view === 'week' && grid) renderGrid();
       if (returnFocus && sel) {
-        var slot = slotEl(sel.ds, sel.min);
-        if (slot) focusSlot(tlCols.querySelector('.tl-slot[tabindex="0"]'), slot);
+        var slot = grid.slotEl(sel.ds, sel.min);
+        if (slot) grid.focusSlot(grid.cols.querySelector('.tl-slot[tabindex="0"]'), slot);
       }
       returnFocus = null;
     });
@@ -662,7 +467,7 @@ window.calrsTimeline = function(api) {
   // The 12h/24h toggle re-renders the timeline's times.
   var fmtToggle = $('time-format-toggle');
   if (fmtToggle) fmtToggle.addEventListener('click', function(e) {
-    if (e.target.closest('button') && api.state().view === 'week') { renderAxis(); renderGrid(); }
+    if (e.target.closest('button') && api.state().view === 'week') { renderGrid(); }
   });
 
   var langBtn = $('tl-lang-btn'), langMenu = $('tl-lang-menu');

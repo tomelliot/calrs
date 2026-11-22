@@ -2507,3 +2507,55 @@ page-order-section-down = { $section } omlaag
 page-order-type-up = { $title } omhoog
 page-order-type-down = { $title } omlaag
 page-order-not-listed = Niet op de openbare pagina (uitgeschakeld, intern of privé)
+
+# Fork: propose times.
+nav-propose-times = Tijden voorstellen
+propose-title = Tijden voorstellen
+propose-step-meeting = Afspraak
+propose-step-times = Tijden kiezen
+propose-pick-sub = Kies de afspraak die je wilt aanbieden, onder de boekingssite waar de gast moet uitkomen.
+propose-times-sub = Klik op vrije tijden in je week. calrs zet ze in een lijst die je in elke e-mail kunt plakken.
+propose-pick-hint = Elke afspraak gebruikt zijn eigen duur, agenda's en boekingslink. Wijzig die bij het afspraaktype.
+propose-checks = Controleert { $calendars }
+propose-checks-none = Controleert geen agenda
+propose-change = Wijzigen
+propose-empty = Klik op een vrije tijd in de week om die voor te stellen.
+propose-no-meetings = Nog geen afspraak om voor te stellen. Deze pagina toont je actieve, openbare afspraaktypes.
+propose-no-meetings-link = Naar afspraaktypes
+propose-your-proposal = Je voorstel
+propose-clear-all = Alles wissen
+propose-snippet = Tekstblok
+propose-guest-tz = Tijdzone van de gast
+propose-guest-tz-same = Zelfde als de mijne ({ $city })
+propose-guest-label = Gast
+propose-you-label = Jij
+propose-guest-time = %1 gast
+propose-legend-busy = Bezet
+propose-legend-outside = Buiten de tijden
+propose-legend-proposed = Voorgesteld
+propose-legend-guest-night = Nacht van de gast (21:00–08:00)
+propose-show-my-time = Ook mijn tijd tonen
+propose-show-my-time-hint = Voegt na elke tijd je eigen tijd toe als de zone van de gast anders is.
+propose-include-more = “Meer tijden vinden” toevoegen
+propose-include-more-hint = Sluit de tekst af met een link naar de boekingspagina van de afspraak.
+propose-copy-failed = Kopiëren mislukt. Sta toegang tot het klembord toe en probeer het opnieuw.
+propose-remove-time = Verwijderen
+propose-copy = Tekstblok kopiëren
+propose-refused-past = Die tijd is al voorbij
+propose-refused-busy = %1–%2 overlapt met ‘%3’
+propose-refused-not-offered = %1 wordt niet aangeboden voor %2
+propose-preview-busy = %1 · bezet
+propose-preview-not-offered = %1 · niet aangeboden
+propose-today = Vandaag
+propose-hint = Klik op een vrije tijd om die voor te stellen
+propose-grid-label = Je week. Gebruik de pijltjestoetsen om tussen vrije tijden te gaan.
+propose-busy-booked = Geboekt: { $name }
+propose-snippet-header = Tijden in %1
+propose-snippet-pick = Klik op een tijd om die te boeken.
+propose-snippet-more = Meer tijden vind je hier
+propose-load-failed = Deze week kon niet worden geladen. Probeer het opnieuw.
+propose-copied =
+    { $count ->
+        [one] { $count } tijd gekopieerd
+       *[other] { $count } tijden gekopieerd
+    }

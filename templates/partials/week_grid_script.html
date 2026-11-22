@@ -1,0 +1,358 @@
+{#- Fork: the week grid shared by the slot page (timeline_script.html) and
+    the propose times page. Styles in week_grid_style.html.
+
+    var grid = calrsWeekGrid(opts) fills `opts.mount` with the grid:
+      opts.duration          meeting length in minutes (blocks are this tall)
+      opts.labels            { grid: aria label of the days, hint: pill text or '' }
+      opts.formatTime(min)   label of a minute of the day
+      opts.formatAxis(h)     label of hour h on the axis (1..23)
+      opts.slotHref(ds, min) href of an offered start (default '#')
+      opts.slotLabel(ds,min) aria label of an offered start
+      opts.snap(ds, t)       the start under minute t: null (no preview), or
+                             { min, ok, label, hidden }. Default: the latest
+                             offered start whose meeting covers t.
+      opts.onSelect(ds, min) a click, Enter or Space on an offered start
+      opts.onRefuse(ds, min, snapped)  a click where snap said ok: false
+      opts.layers(col, day, grid)      adds a page's layers to a day column
+      opts.viewOnly          starts show, but nothing can be chosen
+
+    grid.render(model) draws a week (or one day):
+      model.days     [{ ds, weekday, dayNum, today, starts: [min],
+                        regions: [[from, to]] (default: each start + duration) }]
+      model.zone     the zone label of the axis ('GMT+1')
+      model.guest    optional { zone, title, hour(h) }: a second axis left of
+                     the first, in the guest's zone
+      model.youTitle label over the host axis when there is a guest axis
+      model.selected [{ ds, min, text }] blocks drawn as chosen
+      model.empty    text shown when no day has a start ('' for none)
+
+    Minutes count from the day's midnight in the grid's zone; the page
+    converts. calrsWeekGrid.navButton(label, dir, enabled, onClick) makes
+    the header's arrows. -#}
+<script>
+(function() {
+  'use strict';
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  var CHEVRON_L = '<svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
+  var CHEVRON_R = '<svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+
+  function calrsWeekGrid(opts) {
+    var DUR = Math.max(5, +opts.duration || 30);
+    var labels = opts.labels || {};
+    var HOUR_PX = opts.hourPx || 64;
+    function pxPerMin() { return HOUR_PX / 60; }
+    var model = { days: [] }, byDs = {};
+    var state = { hintGone: !labels.hint, shownKey: '' };
+
+    /* ---------- Skeleton ---------- */
+    var tl = el('div', 'tl');
+    var head = el('div', 'tl-head');
+    var gutter = el('div', 'tl-gutter');
+    var tzGuest = el('span', 'tl-tz is-guest');
+    var tzHost = el('span', 'tl-tz');
+    gutter.appendChild(tzGuest);
+    gutter.appendChild(tzHost);
+    var days = el('div', 'tl-days');
+    head.appendChild(gutter);
+    head.appendChild(days);
+    var scroll = el('div', 'tl-scroll');
+    var body = el('div', 'tl-body');
+    body.setAttribute('role', 'group');
+    if (labels.grid) body.setAttribute('aria-label', labels.grid);
+    var axisGuest = el('div', 'tl-axis is-guest');
+    var axis = el('div', 'tl-axis');
+    axisGuest.setAttribute('aria-hidden', 'true');
+    axis.setAttribute('aria-hidden', 'true');
+    var cols = el('div', 'tl-cols');
+    body.appendChild(axisGuest);
+    body.appendChild(axis);
+    body.appendChild(cols);
+    scroll.appendChild(body);
+    var hint = el('div', 'tl-hint' + (state.hintGone ? ' is-gone' : ''));
+    hint.setAttribute('aria-hidden', 'true');
+    hint.innerHTML = '<span class="tl-hint-dot"><svg class="tl-icon" viewBox="0 0 24 24"><path d="M9 9l10 4-4 1.5L13.5 19z"/><path d="M5 3.5v2.5M2.5 6H5M3.6 3.6l1.8 1.8M8.5 3.6L7 5.1M3.6 8.5L5.1 7"/></svg></span>';
+    hint.appendChild(document.createTextNode(labels.hint || ''));
+    var empty = el('p', 'tl-empty');
+    empty.hidden = true;
+    tl.appendChild(head);
+    tl.appendChild(scroll);
+    tl.appendChild(hint);
+    tl.appendChild(empty);
+    if (opts.viewOnly) tl.classList.add('is-view-only');
+    opts.mount.innerHTML = '';
+    opts.mount.appendChild(tl);
+
+    function hideHint() { state.hintGone = true; hint.classList.add('is-gone'); }
+
+    /* ---------- Days ---------- */
+    function prepare(day) {
+      var starts = (day.starts || []).slice().sort(function(a, b) { return a - b; });
+      var regions = day.regions;
+      if (!regions) {
+        regions = [];
+        starts.forEach(function(s) {
+          var last = regions[regions.length - 1];
+          if (last && s <= last[1]) last[1] = Math.max(last[1], s + DUR);
+          else regions.push([s, s + DUR]);
+        });
+      }
+      var set = {};
+      starts.forEach(function(s) { set[s] = true; });
+      return { ds: day.ds, weekday: day.weekday, dayNum: day.dayNum, today: !!day.today,
+        starts: starts, regions: regions, set: set, src: day };
+    }
+    // The latest offered start at or before minute t whose meeting covers t.
+    function startAt(ds, t) {
+      var d = byDs[ds], best = null;
+      if (!d) return null;
+      for (var i = 0; i < d.starts.length; i++) if (d.starts[i] <= t && t < d.starts[i] + DUR) best = d.starts[i];
+      return best;
+    }
+    function snap(ds, t) {
+      if (opts.snap) return opts.snap(ds, t);
+      var s = startAt(ds, t);
+      return s === null ? null : { min: s, ok: true, label: opts.formatTime(s) };
+    }
+
+    /* ---------- Rendering ---------- */
+    function block(cls, min, text, dur) {
+      var b = el('div', 'tl-block ' + cls, text);
+      b.style.top = (min * pxPerMin()) + 'px';
+      var h = Math.min(dur || DUR, 1440 - min) * pxPerMin();
+      b.style.height = Math.max(h, 14) + 'px';
+      if (h < 26) b.classList.add('is-short');
+      return b;
+    }
+
+    function renderAxes() {
+      axis.innerHTML = '';
+      axisGuest.innerHTML = '';
+      for (var h = 1; h < 24; h++) {
+        var s = el('span', '', opts.formatAxis(h));
+        s.style.top = (h * HOUR_PX) + 'px';
+        axis.appendChild(s);
+        if (model.guest) {
+          var g = el('span', '', model.guest.hour(h));
+          g.style.top = (h * HOUR_PX) + 'px';
+          axisGuest.appendChild(g);
+        }
+      }
+      var dual = !!model.guest;
+      tl.classList.toggle('has-guest', dual);
+      axisGuest.hidden = !dual;
+      tzGuest.hidden = !dual;
+      if (dual) {
+        tzGuest.innerHTML = '';
+        if (model.guest.title) tzGuest.appendChild(el('small', '', model.guest.title));
+        tzGuest.appendChild(document.createTextNode(model.guest.zone || ''));
+      }
+      tzHost.innerHTML = '';
+      if (dual && model.youTitle) tzHost.appendChild(el('small', '', model.youTitle));
+      tzHost.appendChild(document.createTextNode(model.zone || ''));
+    }
+
+    function renderDays() {
+      var focusedKey = null;
+      if (document.activeElement && cols.contains(document.activeElement) && document.activeElement.classList.contains('tl-slot')) {
+        focusedKey = document.activeElement.parentNode.getAttribute('data-date') + '/' + document.activeElement.getAttribute('data-min');
+      }
+      tl.style.setProperty('--tl-n', model.days.length);
+      days.innerHTML = '';
+      cols.innerHTML = '';
+      var any = false, firstSlot = null, keepSlot = null, earliestMin = null;
+      model.days.forEach(function(d) {
+        var hd = el('div', 'tl-dayname' + (d.today ? ' is-today' : ''));
+        hd.appendChild(document.createTextNode(d.weekday + ' '));
+        hd.appendChild(el('b', '', String(d.dayNum)));
+        days.appendChild(hd);
+
+        var col = el('div', 'tl-day');
+        col.setAttribute('data-date', d.ds);
+        d.regions.forEach(function(r) {
+          var o = el('div', 'tl-open');
+          o.style.top = (r[0] * pxPerMin()) + 'px';
+          o.style.height = ((Math.min(r[1], 1440) - r[0]) * pxPerMin()) + 'px';
+          col.appendChild(o);
+        });
+        if (opts.layers) opts.layers(col, d.src, api);
+        d.starts.forEach(function(s) {
+          any = true;
+          if (earliestMin === null || s < earliestMin) earliestMin = s;
+          var a = el('a', 'tl-slot', opts.formatTime(s));
+          a.href = opts.slotHref ? opts.slotHref(d.ds, s) : '#';
+          a.tabIndex = -1;
+          a.style.top = (s * pxPerMin()) + 'px';
+          var h = Math.min(DUR, 1440 - s) * pxPerMin();
+          a.style.height = h + 'px';
+          if (h < 26) a.classList.add('is-short');
+          a.setAttribute('data-min', s);
+          if (opts.slotLabel) a.setAttribute('aria-label', opts.slotLabel(d.ds, s));
+          if (opts.viewOnly) { a.setAttribute('aria-disabled', 'true'); if (opts.viewOnlyTitle) a.title = opts.viewOnlyTitle; }
+          col.appendChild(a);
+          if (!firstSlot) firstSlot = a;
+          var key = d.ds + '/' + s;
+          if (focusedKey === key) keepSlot = a;
+          else if (!keepSlot && (model.selected || []).some(function(x) { return x.ds === d.ds && x.min === s; })) keepSlot = a;
+        });
+        var pv = block('tl-preview', 0, '');
+        pv.hidden = true;
+        col.appendChild(pv);
+        (model.selected || []).forEach(function(x) {
+          if (x.ds === d.ds) col.appendChild(block('tl-selected', x.min, x.text === undefined ? opts.formatTime(x.min) : x.text));
+        });
+        col.appendChild(el('div', 'tl-lines'));
+        cols.appendChild(col);
+      });
+      var roving = keepSlot || firstSlot;
+      if (roving) roving.tabIndex = 0;
+      if (focusedKey && keepSlot) keepSlot.focus();
+      empty.textContent = model.empty || '';
+      empty.hidden = any || !model.empty;
+      return earliestMin;
+    }
+
+    function render(m) {
+      model = m || model;
+      byDs = {};
+      model.days = (model.days || []).map(function(d) { var p = prepare(d); byDs[p.ds] = p; return p; });
+      clearPreview();
+      renderAxes();
+      var earliestMin = renderDays();
+      // On a new week (or day), scroll to an hour before its first start.
+      var key = model.days.length ? model.days[0].ds + '/' + model.days.length : '';
+      if (key !== state.shownKey) {
+        state.shownKey = key;
+        var top = earliestMin === null ? 7 * 60 : Math.max(0, earliestMin - 60);
+        scroll.scrollTop = Math.max(0, top * pxPerMin() - 12);
+      }
+    }
+
+    /* ---------- Pointer and keyboard ---------- */
+    var previewCol = null;
+    function clearPreview() {
+      if (!previewCol) return;
+      var pv = previewCol.querySelector('.tl-preview');
+      if (pv) pv.hidden = true;
+      previewCol.classList.remove('has-preview', 'is-refused');
+      previewCol = null;
+    }
+    function pointer(e) {
+      var col = e.target.closest ? e.target.closest('.tl-day') : null;
+      if (!col) return null;
+      var t = (e.clientY - col.getBoundingClientRect().top) / pxPerMin();
+      var ds = col.getAttribute('data-date');
+      return { col: col, ds: ds, snapped: snap(ds, t) };
+    }
+    function slotEl(ds, min) {
+      var col = cols.querySelector('.tl-day[data-date="' + ds + '"]');
+      return col && col.querySelector('.tl-slot[data-min="' + min + '"]');
+    }
+    function focusSlot(from, to) {
+      if (!to) return;
+      if (from) from.tabIndex = -1;
+      to.tabIndex = 0;
+      to.focus();
+      hideHint();
+    }
+    function select(ds, min) {
+      if (opts.viewOnly || !opts.onSelect) return;
+      opts.onSelect(ds, min);
+    }
+    cols.addEventListener('mousemove', function(e) {
+      if (e.target.closest && e.target.closest('.tl-prop')) { clearPreview(); return; }
+      var p = pointer(e);
+      if (!p || !p.snapped) { clearPreview(); return; }
+      if (previewCol !== p.col) clearPreview();
+      var s = p.snapped;
+      var pv = p.col.querySelector('.tl-preview');
+      pv.hidden = !!s.hidden;
+      pv.style.top = (s.min * pxPerMin()) + 'px';
+      pv.textContent = s.label === undefined ? opts.formatTime(s.min) : s.label;
+      pv.classList.toggle('is-refused', !s.ok);
+      p.col.classList.toggle('has-preview', !!s.ok);
+      p.col.classList.toggle('is-refused', !s.ok);
+      previewCol = p.col;
+      hideHint();
+    });
+    cols.addEventListener('mouseleave', clearPreview);
+    cols.addEventListener('focusin', hideHint);
+    cols.addEventListener('click', function(e) {
+      if (e.target.closest('.tl-prop')) return;
+      var a = e.target.closest('.tl-slot');
+      if (a) {
+        e.preventDefault();
+        select(a.parentNode.getAttribute('data-date'), +a.getAttribute('data-min'));
+        return;
+      }
+      var p = pointer(e);
+      if (!p || !p.snapped) return;
+      if (p.snapped.ok) select(p.ds, p.snapped.min);
+      else if (opts.onRefuse) opts.onRefuse(p.ds, p.snapped.min, p.snapped);
+    });
+    cols.addEventListener('keydown', function(e) {
+      var slot = e.target.closest('.tl-slot');
+      if (!slot) return;
+      var col = slot.parentNode;
+      var list = Array.prototype.slice.call(col.querySelectorAll('.tl-slot'));
+      var i = list.indexOf(slot), to = null;
+      switch (e.key) {
+        case 'ArrowUp': to = list[i - 1]; break;
+        case 'ArrowDown': to = list[i + 1]; break;
+        case 'Home': to = list[0]; break;
+        case 'End': to = list[list.length - 1]; break;
+        case ' ': e.preventDefault(); slot.click(); return;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+          var all = Array.prototype.slice.call(cols.querySelectorAll('.tl-day'));
+          var step = e.key === 'ArrowLeft' ? -1 : 1;
+          var min = +slot.getAttribute('data-min');
+          for (var c = all.indexOf(col) + step; c >= 0 && c < all.length; c += step) {
+            var cand = all[c].querySelectorAll('.tl-slot');
+            if (!cand.length) continue;
+            to = cand[0];
+            for (var k = 0; k < cand.length; k++) {
+              if (Math.abs(+cand[k].getAttribute('data-min') - min) < Math.abs(+to.getAttribute('data-min') - min)) to = cand[k];
+            }
+            break;
+          }
+          break;
+        default: return;
+      }
+      e.preventDefault();
+      focusSlot(slot, to);
+    });
+
+    var api = {
+      el: tl,
+      cols: cols,
+      render: render,
+      block: block,
+      pxPerMin: pxPerMin,
+      clearPreview: clearPreview,
+      slotEl: slotEl,
+      focusSlot: focusSlot,
+      hideHint: hideHint,
+      startAt: startAt,
+      contains: function(node) { return opts.mount.contains(tl) && (!node || tl.contains(node)); }
+    };
+    return api;
+  }
+
+  calrsWeekGrid.navButton = function(label, dir, enabled, onClick) {
+    var b = el('button', '');
+    b.type = 'button';
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.innerHTML = dir < 0 ? CHEVRON_L : CHEVRON_R;
+    b.disabled = !enabled;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  window.calrsWeekGrid = calrsWeekGrid;
+})();
+</script>

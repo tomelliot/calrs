@@ -2505,3 +2505,55 @@ page-order-section-down = Sposta giù { $section }
 page-order-type-up = Sposta su { $title }
 page-order-type-down = Sposta giù { $title }
 page-order-not-listed = Non presente nella pagina pubblica (disattivato, interno o privato)
+
+# Fork: propose times.
+nav-propose-times = Proponi orari
+propose-title = Proponi orari
+propose-step-meeting = Riunione
+propose-step-times = Scegli orari
+propose-pick-sub = Scegli la riunione da proporre, sotto il sito di prenotazione su cui deve arrivare l'ospite.
+propose-times-sub = Fai clic sugli orari liberi della tua settimana. calrs li trasforma in un elenco da incollare in qualsiasi email.
+propose-pick-hint = Ogni riunione usa la propria durata, i propri calendari e il proprio link di prenotazione. Modificali nel tipo di evento.
+propose-checks = Controlla { $calendars }
+propose-checks-none = Non controlla alcun calendario
+propose-change = Cambia
+propose-empty = Fai clic su un orario libero della settimana per proporlo.
+propose-no-meetings = Ancora nessuna riunione da proporre. Questa pagina elenca i tuoi tipi di evento attivi e pubblici.
+propose-no-meetings-link = Vai ai tipi di evento
+propose-your-proposal = La tua proposta
+propose-clear-all = Cancella tutto
+propose-snippet = Testo
+propose-guest-tz = Fuso orario dell'ospite
+propose-guest-tz-same = Uguale al mio ({ $city })
+propose-guest-label = Ospite
+propose-you-label = Tu
+propose-guest-time = %1 ospite
+propose-legend-busy = Occupato
+propose-legend-outside = Fuori orario
+propose-legend-proposed = Proposto
+propose-legend-guest-night = Notte dell'ospite (21:00–08:00)
+propose-show-my-time = Mostra anche il mio orario
+propose-show-my-time-hint = Aggiunge il tuo orario dopo ogni orario quando il fuso dell'ospite è diverso.
+propose-include-more = Includi «Trova altri orari»
+propose-include-more-hint = Chiude il testo con un link alla pagina di prenotazione dell’incontro.
+propose-copy-failed = Copia non riuscita. Consenti l’accesso agli appunti e riprova.
+propose-remove-time = Rimuovi
+propose-copy = Copia testo
+propose-refused-past = Quell'orario è passato
+propose-refused-busy = %1–%2 si sovrappone a «%3»
+propose-refused-not-offered = %1 non è disponibile per %2
+propose-preview-busy = %1 · occupato
+propose-preview-not-offered = %1 · non disponibile
+propose-today = Oggi
+propose-hint = Fai clic su un orario libero per proporlo
+propose-grid-label = La tua settimana. Usa le frecce per spostarti tra gli orari liberi.
+propose-busy-booked = Prenotato: { $name }
+propose-snippet-header = Orari in %1
+propose-snippet-pick = Fai clic su un orario per prenotarlo.
+propose-snippet-more = Altri orari qui
+propose-load-failed = Impossibile caricare questa settimana. Riprova.
+propose-copied =
+    { $count ->
+        [one] { $count } orario copiato
+       *[other] { $count } orari copiati
+    }

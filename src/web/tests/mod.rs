@@ -47,6 +47,8 @@ mod security;
 mod sites;
 mod sms_spend;
 mod sources;
+// Fork: propose times.
+mod propose;
 mod time_off;
 // Fork: the week timeline and booking dialog.
 mod timeline;

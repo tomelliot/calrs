@@ -2523,3 +2523,55 @@ page-order-section-down = Move { $section } down
 page-order-type-up = Move { $title } up
 page-order-type-down = Move { $title } down
 page-order-not-listed = Not on the public page (disabled, internal or private)
+
+# Fork: propose times.
+nav-propose-times = Propose times
+propose-title = Propose times
+propose-step-meeting = Meeting
+propose-step-times = Pick times
+propose-pick-sub = Pick the meeting to offer, under the booking site the guest should land on.
+propose-times-sub = Click open times in your week. calrs writes them up as a list you can paste into any email.
+propose-pick-hint = Each meeting uses its own length, calendars and booking link. Change those on the event type.
+propose-checks = Checks { $calendars }
+propose-checks-none = Checks no calendar
+propose-change = Change
+propose-empty = Click an open time in the week to propose it.
+propose-no-meetings = No meeting to propose yet. This page lists your enabled, public event types.
+propose-no-meetings-link = Go to event types
+propose-your-proposal = Your proposal
+propose-clear-all = Clear all
+propose-snippet = Snippet
+propose-guest-tz = Guest's time zone
+propose-guest-tz-same = Same as mine ({ $city })
+propose-guest-label = Guest
+propose-you-label = You
+propose-guest-time = %1 guest
+propose-legend-busy = Busy
+propose-legend-outside = Outside hours
+propose-legend-proposed = Proposed
+propose-legend-guest-night = Guest's night (21:00–08:00)
+propose-show-my-time = Also show my time
+propose-show-my-time-hint = Adds your own time after each time when the guest's zone differs.
+propose-include-more = Include “Find more times here”
+propose-include-more-hint = Ends the snippet with a link to the meeting’s booking page.
+propose-copy-failed = Couldn’t copy. Allow clipboard access and try again.
+propose-remove-time = Remove
+propose-copy = Copy snippet
+propose-refused-past = That time has passed
+propose-refused-busy = %1–%2 overlaps “%3”
+propose-refused-not-offered = %1 isn't offered for %2
+propose-preview-busy = %1 · busy
+propose-preview-not-offered = %1 · not offered
+propose-today = Today
+propose-hint = Click an open time to propose it
+propose-grid-label = Your week. Use the arrow keys to move between open times.
+propose-busy-booked = Booked: { $name }
+propose-snippet-header = Times shown in %1
+propose-snippet-pick = Click a time to book it.
+propose-snippet-more = Find more times here
+propose-load-failed = Could not load this week. Try again.
+propose-copied =
+    { $count ->
+        [one] Copied { $count } time
+       *[other] Copied { $count } times
+    }

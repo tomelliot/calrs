@@ -1,0 +1,518 @@
+{% extends "dashboard_base.html" %}
+{#- Fork: propose times, step 2: pick open times in the shared week grid
+    (partials/week_grid_*.html, the slot page's grid) and copy them as an
+    email snippet. Nothing is saved: the page keeps its state in memory. -#}
+{% block title %}{{ t("propose-title") }}, calrs{% endblock %}
+{% block main_class %}has-cards{% endblock %}
+{% block container_class %}is-wide pp-wide{% endblock %}
+{% block dashboard_content %}
+{% import "partials/week_grid_tz.html" as wgtz %}
+{% set step = 2 %}
+{% include "partials/propose_head.html" %}
+{% include "partials/week_grid_style.html" %}
+<style>
+  .dashboard-main .container.pp-wide { max-width: 1480px; }
+  .pp-grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+  .pp-stack { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+  .pp-ctx { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.9rem; }
+  .pp-ctx-title { font-weight: 600; color: var(--ink); }
+  .pp-ctx-meta { font-size: 13px; color: var(--text-secondary); }
+  .pp-ctx a { font-size: 13.5px; white-space: nowrap; }
+  .pp-picked { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pp-picked .pp-day { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 10px 0 4px; }
+  .pp-picked .pp-day:first-child { padding-top: 0; }
+  .pp-picked .pp-t { display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: 8px; font-variant-numeric: tabular-nums; }
+  .pp-picked .pp-t:hover { background: var(--surface-hover); }
+  .pp-picked .pp-when { flex: 1; }
+  .pp-picked .pp-g { color: var(--tl-guest); font-size: 12.5px; }
+  .pp-x { border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; font-family: inherit; }
+  .pp-x:hover { color: var(--text); background: var(--border); }
+  .pp-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pp-empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 18px; text-align: center; color: var(--text-muted); line-height: 1.5; font-size: 13.5px; }
+  .pp-clear { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+  .pp-field { display: flex; flex-direction: column; gap: 0.35rem; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.9rem; }
+  .pp-field select { height: 2.25rem; padding: 0 0.6rem; border: 1px solid var(--border); border-radius: var(--r-control, var(--radius)); background: var(--surface); color: var(--text); font: inherit; font-weight: 400; }
+  .pp-check { display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 0.75rem; font-size: 14px; color: var(--text); }
+  .pp-check input { margin-top: 0.2rem; }
+  .pp-check small { display: block; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+  .pp-foot { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .pp-cal-head { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+  .pp-cal-head .tl-bar .cal-header-title { font-size: 1.15rem; margin: 0 0 0 4px; }
+  .pp-cal .card-body { padding-left: 0; padding-right: 0; }
+  .pp-cal .tl { height: clamp(420px, calc(100vh - 270px), 900px); border-left: 0; border-right: 0; border-radius: 0; }
+  .pp-cal .card-foot { margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); }
+  .pp-cal .tl-bar-end { margin-left: auto; }
+  @media (max-width: 1100px) { .pp-grid { grid-template-columns: 1fr; } .pp-grid > .pp-stack:first-child { order: 2; } }
+</style>
+
+<div class="pp-grid">
+  <div class="pp-stack">
+    <section class="card" aria-labelledby="pp-h-picked">
+      <div class="card-head">
+        <h2 id="pp-h-picked">{{ t("propose-your-proposal") }}<span class="num" id="pp-count"></span></h2>
+        <button type="button" class="card-action pp-clear" id="pp-clear" hidden>{{ t("propose-clear-all") }}</button>
+      </div>
+      <div class="card-body">
+        <div class="pp-ctx">
+          <div>
+            <div class="pp-ctx-title">{{ meeting_title }} · {{ duration_label(duration_min) }}</div>
+            <div class="pp-ctx-meta">{{ shown_host }} · {% if calendars %}{{ t("propose-checks", calendars=calendars) }}{% else %}{{ t("propose-checks-none") }}{% endif %}</div>
+          </div>
+          <a href="/dashboard/propose">{{ t("propose-change") }}</a>
+        </div>
+        <ul class="pp-picked" id="pp-picked"></ul>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="pp-h-snippet">
+      <div class="card-head">
+        <h2 id="pp-h-snippet">{{ t("propose-snippet") }}</h2>
+      </div>
+      <div class="card-body">
+        <label class="pp-check"><input type="checkbox" id="pp-dual"><span>{{ t("propose-show-my-time") }}<small>{{ t("propose-show-my-time-hint") }}</small></span></label>
+        <label class="pp-check"><input type="checkbox" id="pp-more" checked><span>{{ t("propose-include-more") }}<small>{{ t("propose-include-more-hint") }}</small></span></label>
+      </div>
+      <div class="card-foot pp-foot">
+        <button type="button" class="ui-btn ui-btn--primary" id="pp-copy" disabled>{{ t("propose-copy") }}</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="card pp-cal" aria-labelledby="pp-range">
+    <div class="card-head pp-cal-head">
+      <div class="tl-bar">
+        <button type="button" class="tl-pill" id="pp-today">{{ t("propose-today") }}</button>
+        <div class="cal-nav" id="pp-nav"></div>
+        <h2 class="cal-header-title" id="pp-range"></h2>
+      </div>
+      <ul class="tl-legend">
+        <li class="is-busy"><i></i>{{ t("propose-legend-busy") }}</li>
+        <li class="is-closed"><i></i>{{ t("propose-legend-outside") }}</li>
+        <li class="is-picked"><i></i>{{ t("propose-legend-proposed") }}</li>
+        <li class="is-night" id="pp-legend-night" hidden><i></i>{{ t("propose-legend-guest-night") }}</li>
+      </ul>
+    </div>
+    <div class="card-body">
+      <div id="pp-week"></div>
+    </div>
+    <div class="card-foot">
+      {{ wgtz.tz_select("pp-guest-tz", t("propose-guest-tz"), tz_options, first_label=t("propose-guest-tz-same", city=host_city), first_value=host_tz) }}
+    </div>
+  </section>
+</div>
+
+{% include "partials/week_grid_script.html" %}
+<script>
+(function() {
+  'use strict';
+  var CFG = {{ config | tojson }};
+  var SNIPPET_I18N = {{ snippet_i18n | tojson }};
+  var PROPOSE_I18N = {
+    empty: {{ t("propose-empty") | tojson }},
+    hint: {{ t("propose-hint") | tojson }},
+    gridLabel: {{ t("propose-grid-label") | tojson }},
+    slotLabel: {{ t("tl-slot-label") | tojson }},
+    prevWeek: {{ t("tl-prev-week") | tojson }},
+    nextWeek: {{ t("tl-next-week") | tojson }},
+    guestLabel: {{ t("propose-guest-label") | tojson }},
+    youLabel: {{ t("propose-you-label") | tojson }},
+    guestTime: {{ t("propose-guest-time") | tojson }},
+    previewBusy: {{ t("propose-preview-busy") | tojson }},
+    previewNotOffered: {{ t("propose-preview-not-offered") | tojson }},
+    refusedPast: {{ t("propose-refused-past") | tojson }},
+    refusedBusy: {{ t("propose-refused-busy") | tojson }},
+    refusedNotOffered: {{ t("propose-refused-not-offered") | tojson }},
+    remove: {{ t("propose-remove-time") | tojson }},
+    copyFailed: {{ t("propose-copy-failed") | tojson }},
+    copied: [{% for n in range(1, 100) %}{{ t("propose-copied", count=n) | tojson }}{% if not loop.last %},{% endif %}{% endfor %}]
+  };
+  var T = PROPOSE_I18N;
+  var HOST_TZ = CFG.hostTz, DUR = CFG.duration, LANG = CFG.lang;
+  var DAY = 864e5;
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function sub(s, a, b, c) { return String(s).replace('%1', a).replace('%2', b === undefined ? '' : b).replace('%3', c === undefined ? '' : c); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function fmt(ms, tz, loc, o) {
+    var opt = { timeZone: tz };
+    for (var k in o) opt[k] = o[k];
+    return new Intl.DateTimeFormat(loc, opt).format(ms).replace(/[  ]/g, ' ');
+  }
+  function hm(ms, tz) { return fmt(ms, tz || HOST_TZ, 'en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); }
+  function shortOffset(tz, at) {
+    try {
+      var p = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(at);
+      for (var i = 0; i < p.length; i++) if (p[i].type === 'timeZoneName') return p[i].value;
+    } catch (e) {}
+    return '';
+  }
+  // Day and minute of the day of an instant in `tz`.
+  function local(ms, tz) {
+    var p = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(ms);
+    var v = {};
+    p.forEach(function(x) { v[x.type] = x.value; });
+    return { ds: v.year + '-' + v.month + '-' + v.day, min: (+v.hour % 24) * 60 + +v.minute };
+  }
+  // The instant of a wall time in `tz`.
+  function toMs(ds, min, tz) {
+    var y = +ds.slice(0, 4), m = +ds.slice(5, 7), d = +ds.slice(8, 10);
+    var wall = Date.UTC(y, m - 1, d, 0, min);
+    function offset(at) { var l = local(at, tz); var p = l.ds.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2], 0, l.min) - at; }
+    var ms = wall - offset(wall);
+    var again = wall - offset(ms);
+    return again === ms ? ms : Math.min(ms, again);
+  }
+  function addDs(ds, n) {
+    var d = new Date(Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10) + n));
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+  }
+  function dsDate(ds) { return Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10), 12); }
+  function guestTz() { return $('pp-guest-tz').value || HOST_TZ; }
+  function dual() { return guestTz() !== HOST_TZ; }
+
+  /* ---------- State ---------- */
+  var week = null, offered = {}, offeredByDay = {}, openByDay = {}, busy = [];
+  var proposals = [];
+  var loading = 0;
+
+  function toast(m, kind) { if (window.calrsToast) window.calrsToast(m, kind || 'info'); }
+
+  /* ---------- The grid ---------- */
+  function snap(ds, t) {
+    var iv = week ? week.interval_min : 15;
+    var list = offeredByDay[ds] || [], best = null;
+    for (var i = 0; i < list.length; i++) if (list[i] <= t && t < list[i] + iv) best = list[i];
+    if (best !== null) {
+      var bms = toMs(ds, best, HOST_TZ);
+      return { min: best, ok: true, label: '+ ' + hm(bms) + (dual() ? ' (' + sub(T.guestTime, hm(bms, guestTz())) + ')' : '') };
+    }
+    var min = Math.floor(t / iv) * iv;
+    var ms = toMs(ds, min, HOST_TZ);
+    if (ms < Date.now()) return { min: min, ok: false, hidden: true, reason: 'past' };
+    var c = conflict(ms);
+    return { min: min, ok: false, reason: c ? 'busy' : 'offer', busy: c,
+      label: sub(c ? T.previewBusy : T.previewNotOffered, hm(ms)) };
+  }
+  function conflict(ms) {
+    for (var i = 0; i < busy.length; i++) if (ms < busy[i].e && ms + DUR * 6e4 > busy[i].s) return busy[i];
+    return null;
+  }
+  function onSelect(ds, min) {
+    var ms = toMs(ds, min, HOST_TZ);
+    // The server's offered set is the only authority.
+    if (!offered[ms]) return;
+    if (proposals.indexOf(ms) === -1) { proposals.push(ms); proposals.sort(function(a, b) { return a - b; }); }
+    render();
+  }
+  function onRefuse(ds, min, s) {
+    var ms = toMs(ds, min, HOST_TZ);
+    if (s.reason === 'past') toast(T.refusedPast, 'warning');
+    else if (s.reason === 'busy') toast(sub(T.refusedBusy, hm(ms), hm(ms + DUR * 6e4), s.busy.title), 'warning');
+    else toast(sub(T.refusedNotOffered, hm(ms), CFG.title), 'warning');
+  }
+  function remove(ms) { proposals = proposals.filter(function(x) { return x !== ms; }); render(); }
+
+  function layers(col, day, g) {
+    var start = toMs(day.ds, 0, HOST_TZ), end = toMs(addDs(day.ds, 1), 0, HOST_TZ);
+    var ppm = g.pxPerMin();
+    function y(ms) { return (ms - start) / 6e4 * ppm; }
+    // The guest's night, a hint only.
+    if (dual()) {
+      var gz = guestTz(), from = null;
+      for (var m = 0; m <= 1440; m += 15) {
+        var night = false;
+        if (m < 1440) { var gh = local(start + m * 6e4, gz).min / 60; night = gh < 8 || gh >= 21; }
+        if (night && from === null) from = m;
+        if (!night && from !== null) {
+          var n = document.createElement('div');
+          n.className = 'tl-night';
+          n.style.top = (from * ppm) + 'px';
+          n.style.height = ((m - from) * ppm) + 'px';
+          col.appendChild(n);
+          from = null;
+        }
+      }
+    }
+    busy.forEach(function(b) {
+      if (b.e <= start || b.s >= end) return;
+      var e = document.createElement('div');
+      e.className = 'tl-busy';
+      var top = Math.max(0, y(b.s)), bottom = Math.min(1440 * ppm, y(b.e));
+      e.style.top = top + 'px';
+      e.style.height = Math.max(16, bottom - top - 2) + 'px';
+      var bt = document.createElement('b');
+      bt.textContent = b.title;
+      e.appendChild(bt);
+      e.appendChild(document.createTextNode(hm(b.s) + '–' + hm(b.e)));
+      e.title = b.title + (b.calendar ? ' · ' + b.calendar : '');
+      col.appendChild(e);
+    });
+    if (Date.now() >= start && Date.now() < end) {
+      var now = document.createElement('div');
+      now.className = 'tl-now';
+      now.style.top = y(Date.now()) + 'px';
+      col.appendChild(now);
+    }
+    // Proposals, numbered in time order, side by side when they overlap.
+    var mine = proposals.filter(function(ms) { return ms >= start && ms < end; }).map(function(ms) { return { s: ms }; });
+    var lanes = [];
+    mine.forEach(function(p) {
+      var l = lanes.findIndex(function(endAt) { return endAt <= p.s; });
+      if (l < 0) { l = lanes.length; lanes.push(0); }
+      lanes[l] = p.s + DUR * 6e4;
+      p.l = l;
+    });
+    mine.forEach(function(p) {
+      var b = g.block('tl-selected tl-prop', (p.s - start) / 6e4, '');
+      var w = 100 / Math.max(1, lanes.length);
+      b.style.left = 'calc(' + (p.l * w) + '% + 3px)';
+      b.style.width = 'calc(' + w + '% - 6px)';
+      var num = document.createElement('span');
+      num.className = 'tl-n';
+      num.textContent = String(proposals.indexOf(p.s) + 1);
+      b.appendChild(num);
+      b.appendChild(document.createTextNode(hm(p.s)));
+      if (dual()) {
+        var gl = document.createElement('small');
+        gl.textContent = sub(T.guestTime, hm(p.s, guestTz()));
+        b.appendChild(gl);
+      }
+      b.title = T.remove;
+      b.setAttribute('role', 'button');
+      b.setAttribute('aria-label', T.remove + ' ' + hm(p.s));
+      b.addEventListener('click', function(ev) { ev.stopPropagation(); remove(p.s); });
+      col.appendChild(b);
+    });
+  }
+
+  var grid = window.calrsWeekGrid({
+    mount: $('pp-week'),
+    duration: DUR,
+    labels: { grid: T.gridLabel, hint: T.hint },
+    formatTime: function(min) { return pad(Math.floor(min / 60) % 24) + ':' + pad(min % 60); },
+    formatAxis: function(h) { return pad(h) + ':00'; },
+    slotLabel: function(ds, min) {
+      var ms = toMs(ds, min, HOST_TZ);
+      return sub(T.slotLabel, fmt(ms, HOST_TZ, LANG, { dateStyle: 'full' }), hm(ms), hm(ms + DUR * 6e4));
+    },
+    snap: snap,
+    onSelect: onSelect,
+    onRefuse: onRefuse,
+    layers: layers
+  });
+
+  /* ---------- Week data ---------- */
+  function load(start) {
+    var seq = ++loading;
+    var url = CFG.weekUrl + (CFG.weekUrl.indexOf('?') === -1 ? '?' : '&') + (start ? 'start=' + encodeURIComponent(start) : '');
+    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } }).then(function(r) {
+      if (!r.ok) throw new Error('status ' + r.status);
+      return r.json();
+    }).then(function(w) {
+      if (seq !== loading) return;
+      week = w;
+      offered = {}; offeredByDay = {}; openByDay = {};
+      w.offered.forEach(function(s) {
+        var ms = Date.parse(s), l = local(ms, HOST_TZ);
+        offered[ms] = true;
+        (offeredByDay[l.ds] = offeredByDay[l.ds] || []).push(l.min);
+      });
+      w.open.forEach(function(o) {
+        var s = Date.parse(o[0]), e = Date.parse(o[1]);
+        // A window can run past midnight: split it per day.
+        while (s < e) {
+          var l = local(s, HOST_TZ), dayEnd = toMs(addDs(l.ds, 1), 0, HOST_TZ);
+          var to = Math.min(e, dayEnd);
+          (openByDay[l.ds] = openByDay[l.ds] || []).push([l.min, l.min + (to - s) / 6e4]);
+          s = to;
+        }
+      });
+      busy = w.busy.map(function(b) { return { s: Date.parse(b.start), e: Date.parse(b.end), title: b.title, calendar: b.calendar }; });
+      render();
+    }).catch(function() {
+      if (seq === loading) toast({{ t("propose-load-failed") | tojson }}, 'error');
+    });
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderCal() {
+    if (!week) return;
+    var days = [], todayDs = local(Date.now(), HOST_TZ).ds;
+    for (var i = 0; i < 7; i++) {
+      var ds = addDs(week.start, i);
+      days.push({ ds: ds, weekday: fmt(dsDate(ds), 'UTC', LANG, { weekday: 'short' }), dayNum: +ds.slice(8, 10),
+        today: ds === todayDs, starts: offeredByDay[ds] || [], regions: openByDay[ds] || [] });
+    }
+    var at = toMs(week.start, 12 * 60, HOST_TZ);
+    var gz = guestTz();
+    grid.render({
+      days: days,
+      zone: shortOffset(HOST_TZ, at),
+      youTitle: T.youLabel,
+      guest: dual() ? {
+        zone: shortOffset(gz, at),
+        title: T.guestLabel,
+        hour: function(h) { return hm(toMs(week.start, h * 60, HOST_TZ), gz); }
+      } : null,
+      selected: [],
+      empty: ''
+    });
+    $('pp-legend-night').hidden = !dual();
+    var a = dsDate(week.start), b = dsDate(addDs(week.start, 6));
+    $('pp-range').textContent = fmt(a, 'UTC', LANG, { month: 'short', day: 'numeric' }) + ' – ' +
+      fmt(b, 'UTC', LANG, { month: 'short', day: 'numeric', year: 'numeric' });
+    var nav = $('pp-nav'), nb = window.calrsWeekGrid.navButton;
+    var focused = nav.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') : null;
+    nav.innerHTML = '';
+    nav.appendChild(nb(T.prevWeek, -1, !!week.prev, function() { load(week.prev); }));
+    nav.appendChild(nb(T.nextWeek, 1, !!week.next, function() { load(week.next); }));
+    if (focused) {
+      var again = nav.querySelector('[aria-label="' + focused + '"]');
+      if (again && !again.disabled) again.focus();
+    }
+  }
+
+  function renderList() {
+    var ul = $('pp-picked');
+    ul.innerHTML = '';
+    $('pp-count').textContent = proposals.length ? String(proposals.length) : '';
+    $('pp-copy').disabled = !proposals.length;
+    $('pp-clear').hidden = !proposals.length;
+    if (!proposals.length) {
+      var li = document.createElement('li');
+      li.className = 'pp-empty';
+      li.textContent = T.empty;
+      ul.appendChild(li);
+      return;
+    }
+    var lastDay = null;
+    proposals.forEach(function(ms) {
+      var day = fmt(ms, HOST_TZ, LANG, { weekday: 'long', day: 'numeric', month: 'long' });
+      if (day !== lastDay) {
+        var h = document.createElement('li');
+        h.className = 'pp-day';
+        h.textContent = day;
+        ul.appendChild(h);
+        lastDay = day;
+      }
+      var li = document.createElement('li');
+      li.className = 'pp-t';
+      var when = document.createElement('span');
+      when.className = 'pp-when';
+      when.textContent = hm(ms) + ' – ' + hm(ms + DUR * 6e4);
+      li.appendChild(when);
+      if (dual()) {
+        var g = document.createElement('span');
+        g.className = 'pp-g';
+        g.textContent = fmt(ms, guestTz(), LANG, { weekday: 'short' }) + ' ' + sub(T.guestTime, hm(ms, guestTz()));
+        li.appendChild(g);
+      }
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'pp-x';
+      x.textContent = '×';
+      x.setAttribute('aria-label', T.remove + ' ' + when.textContent);
+      x.addEventListener('click', function() { remove(ms); });
+      li.appendChild(x);
+      ul.appendChild(li);
+    });
+  }
+
+  /* ---------- Snippet ---------- */
+  function bookBase() { return CFG.bookBase.charAt(0) === '/' ? window.location.origin + CFG.bookBase : CFG.bookBase; }
+  function build() {
+    var tz = guestTz(), lang = CFG.snippetLang, S = SNIPPET_I18N[lang] || SNIPPET_I18N.en, loc = S.intl;
+    var tOpt = lang === 'en' ? { hour: 'numeric', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' };
+    var mine = $('pp-dual').checked && tz !== HOST_TZ;
+    var withMore = $('pp-more').checked;
+    function time(ms) {
+      return fmt(ms, tz, loc, tOpt).toLowerCase() + (mine ? ' (' + fmt(ms, HOST_TZ, loc, tOpt).toLowerCase() + ' ' + CFG.hostCity + ')' : '');
+    }
+    var at = proposals[0] || Date.now();
+    var longName = '';
+    try {
+      var p = new Intl.DateTimeFormat(loc, { timeZone: tz, timeZoneName: 'long' }).formatToParts(at);
+      for (var i = 0; i < p.length; i++) if (p[i].type === 'timeZoneName') longName = p[i].value;
+    } catch (e) {}
+    var head = sub(S.header, (longName || tz) + ' (' + shortOffset(tz, at) + ')');
+    var url = bookBase();
+    function link(ms) {
+      return url + '/book?date=' + fmt(ms, tz, 'en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }) +
+        '&time=' + hm(ms, tz) + '&tz=' + encodeURIComponent(tz);
+    }
+    // Days in the guest's zone: a proposal can move to another day.
+    var groups = [], keyOf = {};
+    proposals.forEach(function(ms) {
+      var k = fmt(ms, tz, loc, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      if (!(k in keyOf)) { keyOf[k] = groups.length; groups.push({ day: k, times: [] }); }
+      groups[keyOf[k]].times.push(ms);
+    });
+    var lines = [head];
+    groups.forEach(function(g) { lines.push(''); lines.push(g.day); g.times.forEach(function(ms) { lines.push(time(ms)); }); });
+    var moreText = S.more + ': ' + url;
+    var body = lines.map(function(l) { return l.replace(/\s+$/, ''); }).join('\n');
+    var text = withMore ? body + '\n\n' + moreText : body;
+    var A = 'color:#2563eb;text-decoration:underline';
+    var html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1c1917">' +
+      '<p style="margin:0 0 12px;color:#57514a">' + esc(head) + ' · ' + esc(S.pick) + '</p>';
+    groups.forEach(function(g) {
+      html += '<p style="margin:0 0 12px"><strong>' + esc(g.day) + '</strong><br>' + g.times.map(function(ms) {
+        return '<a href="' + esc(link(ms)) + '" style="' + A + '">' + esc(time(ms)) + '</a>';
+      }).join('<br>') + '</p>';
+    });
+    var moreA = '<a href="' + esc(url) + '" style="' + A + '">' + esc(S.more) + ' →</a>';
+    if (withMore) html += '<p style="margin:0">' + moreA + '</p>';
+    html += '</div>';
+    return { text: text, html: html, body: body, more: moreText };
+  }
+
+  // The snippet controls: "Also show my time" only means something when the
+  // guest's zone differs from the host's; Copy needs a proposal.
+  function renderSnippet() {
+    $('pp-dual').disabled = !dual();
+    $('pp-copy').disabled = !proposals.length;
+  }
+
+  function render() { renderCal(); renderList(); renderSnippet(); }
+
+  function copied(n) { return T.copied[Math.min(n, T.copied.length) - 1]; }
+  $('pp-copy').addEventListener('click', function() {
+    var b = build(), n = proposals.length;
+    // Fallback: copy an off-screen rendering with the browser's copy command.
+    function legacyCopy() {
+      var box = document.createElement('div');
+      box.style.position = 'fixed';
+      box.style.left = '-10000px';
+      box.innerHTML = b.html;
+      document.body.appendChild(box);
+      var r = document.createRange();
+      r.selectNodeContents(box);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      sel.removeAllRanges();
+      box.remove();
+      if (ok) toast(copied(n), 'success'); else toast(T.copyFailed);
+    }
+    try {
+      if (!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)) return legacyCopy();
+      navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([b.html], { type: 'text/html' }),
+        'text/plain': new Blob([b.text], { type: 'text/plain' })
+      })]).then(function() { toast(copied(n), 'success'); }, legacyCopy);
+    } catch (e) {
+      legacyCopy();
+    }
+  });
+  $('pp-guest-tz').addEventListener('change', render);
+  $('pp-clear').addEventListener('click', function() { proposals = []; render(); });
+  $('pp-today').addEventListener('click', function() { load(''); });
+
+  renderList();
+  renderSnippet();
+  load('');
+})();
+</script>
+{% endblock %}
