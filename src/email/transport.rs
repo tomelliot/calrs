@@ -123,15 +123,18 @@ impl SmtpConfig {
                     .as_ref()
                     .and_then(|s| s.from_email.as_deref())
                     .unwrap_or(&self.from_email);
-                let from_name = site
-                    .as_ref()
-                    .and_then(|s| s.from_name.as_deref())
-                    .or(self.from_name.as_deref());
                 let email = site
                     .as_ref()
                     .and_then(|s| s.reply_to.as_deref())
                     .unwrap_or(email);
-                let display = guest_sender_name(lang, name, from_name);
+                // A site's guest mail shows one name, the site's `from_name`
+                // or else the host's, never "Host via Instance".
+                let display = match &site {
+                    Some(site) => {
+                        guest_sender_name(lang, "", Some(site.from_name.as_deref().unwrap_or(name)))
+                    }
+                    None => guest_sender_name(lang, name, self.from_name.as_deref()),
+                };
                 let mut builder =
                     Message::builder().from(Mailbox::new(display, from_email.parse()?));
                 if let Some(reply_to) = host_reply_to(email) {

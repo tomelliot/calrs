@@ -60,6 +60,11 @@ struct SiteConfig {
     user: String,
     /// The main site of the domain, linked from the logo.
     link: Option<String>,
+    /// Former hosts of this site. A request on one is redirected here with
+    /// its path, and bookings and choices stored under one move here at
+    /// startup.
+    #[serde(default)]
+    aliases: Vec<String>,
     from_email: Option<String>,
     from_name: Option<String>,
     reply_to: Option<String>,
@@ -133,6 +138,8 @@ impl Site {
 pub struct Sites {
     by_host: HashMap<String, Arc<Site>>,
     by_skin: HashMap<String, Arc<Site>>,
+    /// Former host → its site.
+    aliases: HashMap<String, Arc<Site>>,
 }
 
 impl Sites {
@@ -149,6 +156,11 @@ impl Sites {
         let mut sites: Vec<_> = self.by_host.values().cloned().collect();
         sites.sort_by(|a, b| a.host.cmp(&b.host));
         sites
+    }
+
+    /// The site a former host now redirects to.
+    pub fn alias(&self, host: &str) -> Option<Arc<Site>> {
+        self.aliases.get(host).cloned()
     }
 
     fn skin_file(&self, skin: &str, file: &str) -> Option<&SkinFile> {
@@ -206,6 +218,17 @@ impl Sites {
                     return Err(ctx("link must be an https URL"));
                 }
             }
+            let mut aliases = Vec::new();
+            for alias in &site.aliases {
+                match normalize_host(alias).filter(|h| h == alias) {
+                    Some(h) if h != host => aliases.push(h),
+                    _ => {
+                        return Err(ctx(&format!(
+                            "alias \"{alias}\": write a host in lowercase, without a port"
+                        )))
+                    }
+                }
+            }
             let files = match sites.by_skin.get(&site.skin) {
                 // Two sites may share one skin: read it once.
                 Some(other) => other
@@ -241,7 +264,17 @@ impl Sites {
                 .by_skin
                 .entry(site.skin.clone())
                 .or_insert_with(|| site.clone());
+            for alias in aliases {
+                sites.aliases.insert(alias, site.clone());
+            }
             sites.by_host.insert(key, site);
+        }
+        if let Some(host) = sites
+            .aliases
+            .keys()
+            .find(|a| sites.by_host.contains_key(*a))
+        {
+            anyhow::bail!("{host} is both a site and an alias");
         }
         Ok(sites)
     }
@@ -417,7 +450,22 @@ pub async fn site_middleware(State(layer): State<SiteLayer>, req: Request, next:
     if layer.sites.is_empty() {
         return next.run(req).await;
     }
-    let site = request_host(&req).and_then(|host| layer.sites.get(&host));
+    let host = request_host(&req);
+    if let Some(site) = host.as_deref().and_then(|h| layer.sites.alias(h)) {
+        // A former host: the same path on the site's current host. 308 keeps
+        // the method, so a form posted to an old page still arrives.
+        let path = req
+            .uri()
+            .path_and_query()
+            .map(|p| p.as_str())
+            .unwrap_or("/");
+        return (
+            StatusCode::PERMANENT_REDIRECT,
+            [(header::LOCATION, format!("{}{}", site.base_url(), path))],
+        )
+            .into_response();
+    }
+    let site = host.and_then(|host| layer.sites.get(&host));
     if let Some(site) = &site {
         let allowed = match path_access(site, req.uri().path()) {
             Access::Allowed => true,
@@ -516,6 +564,42 @@ static BOOKING_HOSTS: std::sync::LazyLock<std::sync::RwLock<HashMap<String, Stri
 /// Makes `sites` the ones guest emails use, and loads the bookings made on
 /// them. Called by `create_router` when `sites.toml` names at least one site.
 pub async fn install(sites: Arc<Sites>, pool: &sqlx::SqlitePool) {
+    // Rows stored under a former host move to the site's current host.
+    for (alias, site) in &sites.aliases {
+        let moved = async {
+            let mut tx = pool.begin().await?;
+            sqlx::query(
+                "INSERT OR IGNORE INTO event_type_sites (event_type_id, site_host)
+                 SELECT event_type_id, ? FROM event_type_sites WHERE site_host = ?",
+            )
+            .bind(&site.host)
+            .bind(alias)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query("DELETE FROM event_type_sites WHERE site_host = ?")
+                .bind(alias)
+                .execute(&mut *tx)
+                .await?;
+            let bookings = sqlx::query("UPDATE bookings SET site_host = ? WHERE site_host = ?")
+                .bind(&site.host)
+                .bind(alias)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            tx.commit().await?;
+            Ok::<u64, sqlx::Error>(bookings)
+        }
+        .await;
+        match moved {
+            Ok(n) if n > 0 => {
+                tracing::info!(from = %alias, to = %site.host, bookings = n, "moved bookings to the site's current host")
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!(error = %e, from = %alias, "cannot move rows from a former host")
+            }
+        }
+    }
     let rows: Vec<(String, String)> =
         sqlx::query_as("SELECT uid, site_host FROM bookings WHERE site_host IS NOT NULL")
             .fetch_all(pool)
@@ -562,6 +646,13 @@ pub async fn record_booking(
     }
 }
 
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 /// The site the booking with this uid was made on, if it still exists.
 pub fn for_booking(uid: &str) -> Option<Arc<Site>> {
     let host = BOOKING_HOSTS.read().ok()?.get(uid)?.clone();
@@ -579,6 +670,18 @@ pub fn guest_text(site: &Site, host_email: &str, text: &str) -> String {
         }
         None => text.to_string(),
     };
+    // The footer names the site, not calrs (HTML link and plain signature).
+    let site_link = site.link.clone().unwrap_or_else(|| site.base_url());
+    text = text
+        .replace(
+            r#"<a href="https://cal.rs" style="font-size:12px;color:#6b7280;font-weight:600;text-decoration:none;">calrs</a>"#,
+            &format!(
+                r#"<a href="{}" style="font-size:12px;color:#6b7280;font-weight:600;text-decoration:none;">{}</a>"#,
+                html_escape(&site_link),
+                html_escape(&site.title)
+            ),
+        )
+        .replace("\u{2014} calrs", &format!("\u{2014} {}", site.title));
     if let Some(reply_to) = &site.reply_to {
         let host_email = host_email.trim();
         if !host_email.is_empty() && !host_email.eq_ignore_ascii_case(reply_to) {
@@ -586,6 +689,14 @@ pub fn guest_text(site: &Site, host_email: &str, text: &str) -> String {
         }
     }
     text
+}
+
+/// The organizer address of a booking's calendar files: the `reply_to` of the
+/// site it was made on, else the host's address.
+pub fn organizer_email(uid: &str, host_email: &str) -> String {
+    for_booking(uid)
+        .and_then(|site| site.reply_to.clone())
+        .unwrap_or_else(|| host_email.to_string())
 }
 
 /// Keeps the rows of a public list (by event type id) that the current site

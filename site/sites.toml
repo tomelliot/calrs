@@ -14,9 +14,9 @@ title = "Tom Elliot"
 # calrs username whose meeting types the site offers.
 user = "tom"
 link = "https://www.tomelliot.net"
-# Guest emails: a Fastmail sending identity on the same SMTP login.
+# Guest emails: a Fastmail sending identity on the same SMTP login. They
+# show the host's name; set from_name to show another.
 from_email = "tom@tomelliot.net"
-from_name = "Tom Elliot"
 reply_to = "tom@tomelliot.net"
 
 [sites."book.coscope.ai"]
@@ -25,5 +25,4 @@ title = "coscope"
 user = "tom"
 link = "https://coscope.ai"
 from_email = "tom@coscope.ai"
-from_name = "Tom at coscope"
 reply_to = "tom@coscope.ai"

@@ -40,6 +40,10 @@ Tags build `ghcr.io/tomelliot/calrs:<tag>` (`.github/workflows/publish.yml`). Fo
 
 An invalid `sites.toml` stops calrs at startup with a message naming the problem.
 
+**Moving a site to another host.** Rename its `[sites."<host>"]` key and list the old host in `aliases = ["<old host>"]`. Requests on the old host get a 308 redirect to the same path on the new one, so links in emails already sent keep working. At startup, the event type choices and bookings stored under the old host move to the new one. Keep the old host in DNS and the tunnel as long as old links matter.
+
+**Guest emails of a site booking** come from its `from_email` (default: the instance sender), show `from_name` or else the host's name, reply to `reply_to`, link to the site, end with the site's title, and name `reply_to` as the organizer in every calendar file, the host's calendar copy included.
+
 ## Deploying on imp
 
 Hosts: `calrs.tomelliot.net` (admin, `CALRS_BASE_URL`, behind Cloudflare Access), `book.tomelliot.net`, `book.coscope.ai`.

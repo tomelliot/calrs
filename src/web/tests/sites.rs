@@ -7,6 +7,8 @@ use chrono::Datelike;
 
 const SITE: &str = "book.a.test";
 const OTHER_SITE: &str = "book.b.test";
+/// A former host of `SITE`.
+const OLD_SITE: &str = "old.a.test";
 
 /// A router whose data directory holds `sites.toml` with two sites and a
 /// skin `a`. `test-meeting` (from `seed_test_data`) is offered on `SITE`; the
@@ -16,9 +18,10 @@ async fn setup_site_app() -> (Router, SqlitePool, String, String) {
     let pool = setup_test_db().await;
     let (user_id, _, et_id) = seed_test_data(&pool).await;
     insert_personal_et(&pool, &user_id, "other").await;
+    // Stored under the former host: startup moves it to `SITE`.
     sqlx::query("INSERT INTO event_type_sites (event_type_id, site_host) VALUES (?, ?)")
         .bind(&et_id)
-        .bind(SITE)
+        .bind(OLD_SITE)
         .execute(&pool)
         .await
         .unwrap();
@@ -51,6 +54,7 @@ skin = "a"
 title = "Site A"
 user = "testuser"
 link = "https://a.test"
+aliases = ["{OLD_SITE}"]
 from_email = "tom@a.test"
 from_name = "Tom at A"
 reply_to = "tom@a.test"
@@ -229,11 +233,21 @@ async fn guest_email_comes_from_the_site_the_booking_was_made_on() {
 
     let guest = mail_to(&mails, "site-guest@test.com").await;
     assert!(
-        guest.lines().any(|l| l.starts_with("From:")
-            && l.contains("Tom at A")
-            && l.contains("<tom@a.test>")),
-        "{guest}"
+        guest
+            .lines()
+            .any(|l| l.starts_with("From:") && l.contains("\"Tom at A\" <tom@a.test>")),
+        "From is the site's name alone, no \"via\": {guest}"
     );
+    assert!(!guest.contains(" via "), "{guest}");
+    assert!(
+        guest.contains(">Site A</a>"),
+        "footer names the site: {guest}"
+    );
+    assert!(
+        guest.contains("\u{2014} Site A"),
+        "plain signature names the site"
+    );
+    assert!(!guest.contains("https://cal.rs"), "{guest}");
     assert!(
         guest
             .lines()
@@ -255,6 +269,10 @@ async fn guest_email_comes_from_the_site_the_booking_was_made_on() {
     );
 
     let host = mail_to(&mails, "test@example.com").await;
+    assert!(
+        host.contains("ORGANIZER;CN=Test User:mailto:tom@a.test"),
+        "the host's copy names the same organizer as the guest's: {host}"
+    );
     assert!(
         host.lines()
             .any(|l| l.starts_with("From:") && l.contains("noreply@test.com")),
@@ -403,4 +421,30 @@ async fn sites_follow_the_event_type_not_its_slug() {
         .await
         .unwrap();
     assert!(hosts_of(&pool, &et_id).await.is_empty());
+}
+
+/// A former host redirects to the same path on the site's current host, and
+/// startup moved its rows (the fixture stored `test-meeting` under it).
+#[tokio::test]
+async fn former_host_redirects_and_its_rows_move() {
+    let (app, pool, et_id, _) = setup_site_app().await;
+    let response = app
+        .clone()
+        .oneshot(on(OLD_SITE, "/booking/cancel/abc?x=1"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(
+        response.headers()["location"],
+        format!("https://{SITE}/booking/cancel/abc?x=1")
+    );
+    assert_eq!(hosts_of(&pool, &et_id).await, vec![SITE]);
+    assert_eq!(
+        app.clone()
+            .oneshot(on(SITE, "/test-meeting"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
 }

@@ -479,7 +479,11 @@ fn generate_ics_impl(
     // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
     let host_name = sanitize_ics_param(&details.host_name);
     let guest_name = sanitize_ics_param(&details.guest_name);
-    let host_email = sanitize_ics(&details.host_email);
+    // Fork: the booking site's address, so every copy has one organizer.
+    let host_email = sanitize_ics(&crate::web::sites::organizer_email(
+        &details.uid,
+        &details.host_email,
+    ));
     let guest_email = sanitize_ics(&details.guest_email);
     let location_line = details
         .location
@@ -623,7 +627,11 @@ fn generate_cancel_ics_impl(details: &CancellationDetails, method: &str) -> Stri
     // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
     let host_name = sanitize_ics_param(&details.host_name);
     let guest_name = sanitize_ics_param(&details.guest_name);
-    let host_email = sanitize_ics(&details.host_email);
+    // Fork: the booking site's address, so every copy has one organizer.
+    let host_email = sanitize_ics(&crate::web::sites::organizer_email(
+        &details.uid,
+        &details.host_email,
+    ));
     let guest_email = sanitize_ics(&details.guest_email);
     // RFC 5546 3.2.5: a CANCEL names the attendees it removes the event for,
     // here everyone the invite listed (#267).
