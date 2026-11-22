@@ -134,7 +134,15 @@ select { font: inherit; font-size: 14px; color: var(--text); background: var(--s
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .calscroll { overflow-x: auto; max-height: 640px; overflow-y: auto; }
-.cal { display: grid; grid-template-columns: 52px repeat(7, minmax(92px, 1fr)); min-width: 700px; position: relative; }
+.cal { display: grid; grid-template-columns: var(--gutters, 52px) repeat(7, minmax(92px, 1fr)); min-width: 700px; position: relative; }
+.gutters { display: grid; grid-template-columns: repeat(var(--ng, 1), 1fr); }
+.gutters .hours.guest span { color: #7c3aed; font-weight: 600; }
+.cal .tz { flex-direction: column; gap: 2px; line-height: 1.2; }
+.cal .tz .g { color: #7c3aed; font-weight: 600; }
+.gnight { position: absolute; left: 0; right: 0; background: color-mix(in srgb, #7c3aed 9%, transparent); pointer-events: none; }
+.gtz { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.gtz select { width: auto; padding: 5px 8px; font-size: 13px; }
+.picked .t .g { color: #7c3aed; font-size: 12.5px; }
 .cal .dh { position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: center; font-size: 12px; color: var(--text-muted); }
 .cal .dh b { display: block; font-size: 18px; color: var(--text); font-weight: 600; }
 .cal .dh.today b { color: var(--accent); }
@@ -219,16 +227,7 @@ select { font: inherit; font-size: 14px; color: var(--text); background: var(--s
             </div>
           </div>
           <div class="card-body">
-            <div class="row2">
-              <label class="f">Write times in
-                <select id="tz">
-                  <option value="Europe/Berlin" selected>Berlin (my zone)</option>
-                  <option value="Europe/London">London</option>
-                  <option value="America/New_York">New York</option>
-                  <option value="America/Los_Angeles">Los Angeles</option>
-                  <option value="Asia/Tokyo">Tokyo</option>
-                </select>
-              </label>
+            <div>
               <label class="f">Language
                 <select id="lang">
                   <option value="en" selected>English</option>
@@ -257,7 +256,16 @@ select { font: inherit; font-size: 14px; color: var(--text); background: var(--s
               <button class="iconbtn" id="next" aria-label="Next week">›</button>
               <h2 class="range" id="h-week"></h2>
             </div>
-            <div class="legend"><span><i style="background:var(--busy);border-left:2px solid var(--busy-edge)"></i>Busy</span><span><i style="background:repeating-linear-gradient(135deg,var(--busy-edge) 0 2px,transparent 2px 4px)"></i>Outside hours</span><span><i style="background:var(--accent)"></i>Proposed</span></div>
+            <label class="gtz">Guest's time zone
+              <select id="tz">
+                <option value="Europe/Berlin">Same as mine (Berlin)</option>
+                <option value="Europe/London">London</option>
+                <option value="America/New_York" selected>New York</option>
+                <option value="America/Los_Angeles">Los Angeles</option>
+                <option value="Asia/Tokyo">Tokyo</option>
+              </select>
+            </label>
+            <div class="legend"><span><i style="background:var(--busy);border-left:2px solid var(--busy-edge)"></i>Busy</span><span><i style="background:repeating-linear-gradient(135deg,var(--busy-edge) 0 2px,transparent 2px 4px)"></i>Outside hours</span><span><i style="background:var(--accent)"></i>Proposed</span><span><i style="background:color-mix(in srgb,#7c3aed 25%,transparent)"></i>Guest's night (21:00–08:00)</span></div>
           </div>
           <div class="calscroll" id="calscroll"><div class="cal" id="cal"></div></div>
         </section>
@@ -269,6 +277,7 @@ select { font: inherit; font-size: 14px; color: var(--text); background: var(--s
             <li><b>Only times the booking page offers can be proposed</b> (working hours, notice, horizon, busy calendars). Clicking another is refused with the reason, so every link works.</li>
             <li><b>Overlapping proposals</b> (12:30 and 12:45) are fine and sit side by side.</li>
             <li><b>Own page</b>, starting with one choice: a meeting, listed under each booking site (domain) it is offered on. Its calendars and length come from the event type; links use that site's host.</li>
+            <li><b>Guest's time zone</b> is picked above the calendar: it adds a guest time column, tints the guest's night, and is the zone the snippet is written in.</li>
             <li><b>“Find more times”</b> is on by default; remove it from the snippet with ×.</li>
           </ul></div>
         </section>
@@ -334,6 +343,7 @@ const dur = () => et.min;
 const pad = n => String(n).padStart(2, '0');
 const fmt = (ms, tz, loc, o) => new Intl.DateTimeFormat(loc, { timeZone: tz, ...o }).format(ms);
 const hm = ms => fmt(ms, HOST_TZ, 'en-GB', {hour:'2-digit', minute:'2-digit'});
+const gm = ms => fmt(ms, $('tz').value, 'en-GB', {hour:'2-digit', minute:'2-digit'});
 const lenLabel = m => m < 60 ? `${m} min` : (m % 60 ? `${Math.floor(m/60)} h ${m%60} min` : `${m/60} h`);
 const defaultCals = e => e.cals.length ? e.cals : ALLCALS.filter(c => c.busy).map(c => c.id);
 const calNames = e => defaultCals(e).map(id => ALLCALS.find(c => c.id === id).name);
@@ -392,16 +402,27 @@ $('back').onclick = () => goStep(1);
 function renderCal() {
   const cal = $('cal'); cal.innerHTML = '';
   $('h-week').textContent = fmt(week, HOST_TZ, 'en-US', {month:'short', day:'numeric'}) + ' – ' + fmt(week + 6*DAY, HOST_TZ, 'en-US', {month:'short', day:'numeric', year:'numeric'});
-  const tz = document.createElement('div'); tz.className = 'dh tz'; tz.textContent = 'GMT+1'; cal.append(tz);
+  const gz = $('tz').value, dual = gz !== HOST_TZ;
+  cal.style.setProperty('--gutters', dual ? '104px' : '52px');
+  const off = z => new Intl.DateTimeFormat('en-US', {timeZone: z, timeZoneName: 'shortOffset'}).formatToParts(week).find(x => x.type === 'timeZoneName').value;
+  const tz = document.createElement('div'); tz.className = 'dh tz';
+  tz.innerHTML = dual ? `<span style="display:grid;grid-template-columns:1fr 1fr;width:100%;gap:4px"><span class="g">Guest<br>${off(gz)}</span><span>You<br>${off(HOST_TZ)}</span></span>` : off(HOST_TZ);
+  cal.append(tz);
   for (let d = 0; d < 7; d++) {
     const day = week + d*DAY, h = document.createElement('div');
     h.className = 'dh' + (day <= NOW && NOW < day + DAY ? ' today' : '');
     h.innerHTML = fmt(day, HOST_TZ, 'en-US', {weekday:'short'}) + '<b>' + fmt(day, HOST_TZ, 'en-US', {day:'numeric'}) + '</b>';
     cal.append(h);
   }
+  const gut = document.createElement('div'); gut.className = 'gutters'; gut.style.setProperty('--ng', dual ? 2 : 1);
+  if (dual) {
+    const gh = document.createElement('div'); gh.className = 'hours guest'; gh.style.height = (H1-H0)*HOUR + 'px';
+    for (let h = H0+1; h < H1; h++) { const sp = document.createElement('span'); sp.style.top = (h-H0)*HOUR+'px'; sp.textContent = fmt(week + h*36e5, gz, 'en-GB', {hour:'2-digit', minute:'2-digit'}); gh.append(sp); }
+    gut.append(gh);
+  }
   const hours = document.createElement('div'); hours.className = 'hours'; hours.style.height = (H1-H0)*HOUR + 'px';
   for (let h = H0+1; h < H1; h++) { const s = document.createElement('span'); s.style.top = (h-H0)*HOUR+'px'; s.textContent = pad(h)+':00'; hours.append(s); }
-  cal.append(hours);
+  gut.append(hours); cal.append(gut);
   const busy = busyNow(), order = [...props].sort((a,b)=>a-b);
 
   for (let d = 0; d < 7; d++) {
@@ -411,6 +432,10 @@ function renderCal() {
     const off = (a, b) => { if (b <= a) return; const o = document.createElement('div'); o.className = 'off'; o.style.top = a+'px'; o.style.height = (b-a)+'px'; col.append(o); };
     if (d >= 5) off(0, max); else { off(0, (WORK.start-H0)*HOUR); off((WORK.end-H0)*HOUR, max); }
     if (NOW > day) off(0, Math.min(max, y(NOW)));
+    if (dual) for (let m = 0; m < (H1-H0)*60; m += 15) {
+      const t = day + (H0*60 + m)*6e4, gh = +fmt(t, gz, 'en-GB', {hour:'2-digit', hourCycle:'h23'});
+      if (gh < 8 || gh >= 21) { const n = document.createElement('div'); n.className = 'gnight'; n.style.top = (m/60*HOUR)+'px'; n.style.height = (HOUR/4)+'px'; col.append(n); }
+    }
     if (day <= NOW && NOW < day+DAY) { const n = document.createElement('div'); n.className='now'; n.style.top = y(NOW)+'px'; col.append(n); }
     busy.filter(b => b.e > day + H0*36e5 && b.s < day + H1*36e5).forEach(b => {
       const e = document.createElement('div'); e.className = 'ev' + (b.team ? ' team' : '');
@@ -428,7 +453,7 @@ function renderCal() {
       const w = 100 / Math.max(1, lanes.length);
       el.style.left = `calc(${p.l*w}% + 3px)`; el.style.width = `calc(${w}% - 6px)`;
       el.style.top = y(p.s)+'px'; el.style.height = (dur()/60*HOUR - 2)+'px';
-      el.innerHTML = `<span class="n">${order.indexOf(p.s)+1}</span>` + hm(p.s);
+      el.innerHTML = `<span class="n">${order.indexOf(p.s)+1}</span>` + hm(p.s) + (dual ? `<br><span style="font-weight:500;opacity:.85">${gm(p.s)} guest</span>` : '');
       el.title = 'Click to remove';
       el.addEventListener('click', ev => { ev.stopPropagation(); props = props.filter(x => x !== p.s); render(); });
       col.append(el);
@@ -441,7 +466,7 @@ function renderCal() {
       const r = refusal(s), c = conflict(s);
       col.classList.toggle('nope', !!r); ghost.classList.toggle('blocked', !!r);
       ghost.hidden = false; ghost.style.top = y(s)+'px'; ghost.style.height = (dur()/60*HOUR-2)+'px';
-      ghost.textContent = r ? `${hm(s)} · ${c ? 'busy' : 'not offered'}` : '+ ' + hm(s);
+      ghost.textContent = r ? `${hm(s)} · ${c ? 'busy' : 'not offered'}` : '+ ' + hm(s) + ($('tz').value !== HOST_TZ ? ` (${gm(s)} guest)` : '');
     });
     col.addEventListener('mouseleave', () => { ghost.hidden = true; col.classList.remove('nope'); });
     col.addEventListener('click', ev => {
@@ -499,7 +524,7 @@ function renderList() {
     const h = document.createElement('li'); h.className = 'day'; h.textContent = day.replace(/ \d{4}$/, ''); ul.append(h);
     ts.forEach(ms => {
       const li = document.createElement('li'); li.className = 't';
-      li.innerHTML = `<span class="when">${hm(ms)} – ${hm(ms + dur()*6e4)}</span><button class="x" aria-label="Remove">×</button>`;
+      li.innerHTML = `<span class="when">${hm(ms)} – ${hm(ms + dur()*6e4)}</span>${$('tz').value !== HOST_TZ ? `<span class="g">${fmt(ms, $('tz').value, 'en-GB', {weekday:'short'})} ${gm(ms)} guest</span>` : ''}<button class="x" aria-label="Remove">×</button>`;
       li.querySelector('.x').onclick = () => { props = props.filter(x => x !== ms); render(); };
       ul.append(li);
     });
@@ -537,7 +562,8 @@ $('copy').onclick = async () => {
 };
 $('f-rich').onclick = () => { format = 'rich'; $('f-rich').setAttribute('aria-pressed', true); $('f-plain').setAttribute('aria-pressed', false); renderPreview(); };
 $('f-plain').onclick = () => { format = 'plain'; $('f-plain').setAttribute('aria-pressed', true); $('f-rich').setAttribute('aria-pressed', false); renderPreview(); };
-['tz','lang','dual','links'].forEach(id => $(id).addEventListener('change', renderPreview));
+['lang','dual','links'].forEach(id => $(id).addEventListener('change', renderPreview));
+$('tz').addEventListener('change', render);
 $('clear').onclick = () => { props = []; render(); };
 $('prev').onclick = () => { week -= 7*DAY; renderCal(); };
 $('next').onclick = () => { week += 7*DAY; renderCal(); };
