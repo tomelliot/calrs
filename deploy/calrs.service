@@ -1,0 +1,29 @@
+# /etc/systemd/system/calrs.service on imp.
+#
+# Starts calrs at boot with fresh secrets from Bitwarden Secrets Manager.
+# The image tag is CALRS_TAG in /opt/calrs/.env. To deploy a new release:
+# change the tag, then `systemctl restart calrs`.
+#
+# Docker's own restart policy (unless-stopped) covers crashes. This unit
+# re-reads the secrets at every start, so a rotated password in bws takes
+# effect on the next restart.
+[Unit]
+Description=calrs booking server (book.tomelliot.net, book.coscope.ai)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/calrs
+SyslogIdentifier=calrs
+ExecStart=/usr/local/bin/bws-env --only CALRS_SECRET_KEY --only CALRS_FASTMAIL_SMTP_PASSWORD -- docker compose up -d --pull missing --remove-orphans
+# compose reads the secrets even to stop, as the file requires them.
+ExecStop=/usr/local/bin/bws-env --only CALRS_SECRET_KEY --only CALRS_FASTMAIL_SMTP_PASSWORD -- docker compose down
+# bws can be unreachable for a moment after boot.
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
