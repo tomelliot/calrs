@@ -971,6 +971,8 @@ pub(super) async fn book_team(
             if needs_approval {
                 stamp_pending_deadline(&mut tx, &id).await;
             }
+            // Fork: remember the booking site for its guest emails.
+            super::sites::record_booking(&mut tx, &id, &uid).await;
         }
         Err(e) => {
             let _ = tx.rollback().await;
@@ -1600,6 +1602,8 @@ async fn handle_dynamic_group_booking(
             if needs_approval {
                 stamp_pending_deadline(&mut tx, &id).await;
             }
+            // Fork: remember the booking site for its guest emails.
+            super::sites::record_booking(&mut tx, &id, &uid).await;
         }
         Err(e) => {
             let _ = tx.rollback().await;
@@ -2269,6 +2273,8 @@ pub(super) async fn book_personal(
             if needs_approval {
                 stamp_pending_deadline(&mut tx, &id).await;
             }
+            // Fork: remember the booking site for its guest emails.
+            super::sites::record_booking(&mut tx, &id, &uid).await;
         }
         Err(e) => {
             let _ = tx.rollback().await;
@@ -3126,6 +3132,8 @@ pub(super) async fn handle_booking(
             if needs_approval {
                 stamp_pending_deadline(&mut tx, &id).await;
             }
+            // Fork: remember the booking site for its guest emails.
+            super::sites::record_booking(&mut tx, &id, &uid).await;
         }
         Err(e) => {
             let _ = tx.rollback().await;

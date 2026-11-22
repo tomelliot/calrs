@@ -213,6 +213,7 @@ base-loader-please-wait = Por favor espera, cargando los datos del calendario...
 base-stop-impersonating = Dejar de suplantar
 base-theme-toggle = Cambiar de tema
 base-powered-by = Desarrollado por
+site-source-link = Código fuente
 
 # Profile (templates/profile.html)
 

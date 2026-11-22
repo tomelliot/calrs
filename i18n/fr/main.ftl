@@ -213,6 +213,7 @@ base-loader-please-wait = Veuillez patienter, chargement des dernières données
 base-stop-impersonating = Arrêter l'usurpation
 base-theme-toggle = Changer de thème
 base-powered-by = Propulsé par
+site-source-link = Code source
 
 # Profile (templates/profile.html)
 

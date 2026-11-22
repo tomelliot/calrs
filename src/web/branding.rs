@@ -675,7 +675,11 @@ pub(super) fn register_company_logo(env: &mut minijinja::Environment<'static>, d
     env.add_function("company_logo", move || {
         // Built from a fixed route and a hex version only, so nothing in them
         // needs escaping; marked safe so the `/` stays a `/` in the page.
-        let (light, dark) = company_logo_urls(&data_dir);
+        // Fork: a booking site shows its skin's logo, never the instance's.
+        let (light, dark) = match super::sites::current() {
+            Some(site) => (site.logo_url(), site.logo_dark_url()),
+            None => company_logo_urls(&data_dir),
+        };
         let safe = |url: Option<String>| url.map(minijinja::Value::from_safe_string);
         minijinja::context! { light => safe(light), dark => safe(dark) }
     });

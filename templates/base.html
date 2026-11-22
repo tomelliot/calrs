@@ -11,7 +11,8 @@
   <meta name="color-scheme" content="light dark">
   {% endif %}
   <title>{% block title %}calrs{% endblock %}</title>
-  <link rel="icon" href="/favicon">
+  {% set _site = (site() if site is defined else none) %}
+  <link rel="icon" href="{% if _site and _site.favicon %}{{ _site.favicon }}{% else %}/favicon{% endif %}">
   <script>
   // Apply theme ASAP to avoid flash. In embed mode the parent controls theme
   // via ?theme= so we skip localStorage and respect the URL param only.
@@ -529,6 +530,8 @@
   </style>
   {% endif %}
   {% block head %}{% endblock %}
+  {#- Fork: the booking site's skin, last so it overrides the page's own CSS. #}
+  {% if _site and _site.css %}<link rel="stylesheet" href="{{ _site.css }}">{% endif %}
 </head>
 <body>
   <!-- Global sync loader overlay -->
@@ -563,7 +566,7 @@
   {% endif %}
   <div class="container">
     {% block content %}{% endblock %}
-    {% block footer %}<div class="powered"><span>{{ t('base-powered-by') }} <a href="https://cal.rs">calrs</a> <img src="/brand-logo" alt="" width="17" height="14" style="vertical-align: -2px; margin-left: 0.15rem;"></span></div>{% endblock %}
+    {% block footer %}{% if _site %}<div class="powered site-foot"><span>{{ _site.title }} · <a href="{{ _site.source_url }}">{{ t('site-source-link') }}</a></span></div>{% else %}<div class="powered"><span>{{ t('base-powered-by') }} <a href="https://cal.rs">calrs</a> <img src="/brand-logo" alt="" width="17" height="14" style="vertical-align: -2px; margin-left: 0.15rem;"></span></div>{% endif %}{% endblock %}
     {% block theme_toggle %}
     <button id="theme-toggle" type="button" title="{{ t('base-theme-toggle') }}" aria-label="{{ t('base-theme-toggle') }}" class="theme-pill">
       <span class="theme-pill-track">

@@ -4,8 +4,18 @@ use super::*;
 
 // --- Root redirect ---
 
-pub(super) async fn root_redirect() -> impl IntoResponse {
-    Redirect::to("/auth/login")
+pub(super) async fn root_redirect(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Response {
+    // Fork: on a booking site, `/` is the site owner's page, limited to the
+    // site's meeting types.
+    if let Some(site) = super::sites::current() {
+        return user_profile(State(state), headers, Path(site.user.clone()))
+            .await
+            .into_response();
+    }
+    Redirect::to("/auth/login").into_response()
 }
 
 // --- Dashboard (overview) ---

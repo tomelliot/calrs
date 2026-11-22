@@ -207,6 +207,13 @@ pub async fn send_guest_confirmation_ex(
         details.guest_footer.as_deref(),
     );
 
+    // Fork: the booking site's links and address.
+    let (mut plain, mut html, mut ics) = (plain, html, ics);
+    site_rewrite(
+        &details.uid,
+        &details.host_email,
+        &mut [&mut plain, &mut html, &mut ics],
+    );
     let body = build_multipart_body(&plain, &html);
 
     let ics_attachment = Attachment::new("invite.ics".to_string()).body(
@@ -290,6 +297,7 @@ async fn send_guest_attendee_copies(
                         name: &details.host_name,
                         email: &details.host_email,
                         lang,
+                        uid: Some(&details.uid),
                     },
                     to,
                     compose(&copy, lang),
@@ -517,6 +525,13 @@ pub async fn send_guest_reminder(
         details.guest_footer.as_deref(),
     );
 
+    // Fork: the booking site's links and address.
+    let (mut plain, mut html) = (plain, html);
+    site_rewrite(
+        &details.uid,
+        &details.host_email,
+        &mut [&mut plain, &mut html],
+    );
     let body = build_multipart_body(&plain, &html);
 
     let subject = ta(
@@ -694,6 +709,7 @@ pub async fn send_guest_attendee_cancellations(
                         name: &details.host_name,
                         email: &details.host_email,
                         lang,
+                        uid: Some(&details.uid),
                     },
                     to,
                     compose_attendee_cancellation(&copy, lang),
@@ -791,7 +807,13 @@ pub async fn send_guest_pending_notice_ex(
     reschedule_url: Option<&str>,
 ) -> Result<()> {
     let to = named_mailbox(&details.guest_name, &details.guest_email)?;
-    let composed = compose_guest_pending_notice(details, cancel_url, reschedule_url);
+    let mut composed = compose_guest_pending_notice(details, cancel_url, reschedule_url);
+    // Fork: the booking site's links and address.
+    site_rewrite(
+        &details.uid,
+        &details.host_email,
+        &mut [&mut composed.plain, &mut composed.html],
+    );
     let body = build_multipart_body(&composed.plain, &composed.html);
 
     let email = config
@@ -1242,6 +1264,7 @@ pub async fn send_invite_email(
         name: host_name,
         email: host_email,
         lang,
+        uid: None,
     };
     send_composed(config, sender, to, mail, None).await
 }
@@ -1409,6 +1432,7 @@ pub async fn send_guest_reschedule_notification(
         name: &details.host_name,
         email: &details.host_email,
         lang: lang_or_en(details.guest_language.as_deref()),
+        uid: Some(&details.uid),
     };
     send_composed(
         config,

@@ -126,6 +126,7 @@ fn host_sender_sets_display_name_and_reply_to() {
         name: "Bob Smith",
         email,
         lang: "en",
+        uid: None,
     };
 
     let wire = wire_headers(&config, host("bob@example.com"));
@@ -179,6 +180,7 @@ fn host_sender_name_with_non_ascii_or_specials_is_encoded() {
                 name,
                 email: "host@example.com",
                 lang,
+                uid: None,
             },
         );
         let from = wire

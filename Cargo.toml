@@ -99,6 +99,7 @@ utoipa = { version = "6", features = ["preserve_order", "preserve_path_order"] }
 # Localization (Fluent)
 fluent-bundle = "0.15"
 unic-langid = "0.9"
+toml = "0.8"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
@@ -107,6 +108,7 @@ http-body-util = "0.1"
 # real Rust parser; span-locations gives them line numbers.
 syn = { version = "2", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
+tempfile = "3.27.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }

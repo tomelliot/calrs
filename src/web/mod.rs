@@ -28,6 +28,8 @@ mod overview_stats;
 mod pending;
 mod public_pages;
 pub(crate) mod questions;
+// Fork: booking sites (sites.toml, skins).
+pub(crate) mod sites;
 mod sources;
 mod teams;
 mod time_off;
@@ -368,6 +370,8 @@ pub struct AppState {
     /// The admin overview's booking-wide figures, kept for a minute on
     /// instances where they are slow to compute (#343).
     pub(crate) admin_figures: admin_stats::FiguresCache,
+    /// Fork: booking sites from `sites.toml` (empty without the file).
+    pub sites: Arc<sites::Sites>,
 }
 
 // --- CSRF protection (double-submit cookie pattern) ---
@@ -922,6 +926,20 @@ pub async fn create_router(
     env.set_loader(minijinja::path_loader("templates"));
     crate::i18n::register(&mut env);
     register_company_logo(&mut env, data_dir.clone());
+    sites::register(&mut env);
+    let sites = match sites::Sites::load(&data_dir) {
+        Ok(sites) => Arc::new(sites),
+        Err(e) => {
+            eprintln!("calrs: cannot load booking sites: {e:#}");
+            std::process::exit(1);
+        }
+    };
+    if !sites.is_empty() {
+        sites::install(sites.clone(), &pool).await;
+    }
+    for site in sites.all() {
+        tracing::info!(host = %site.host, skin = %site.skin, types = ?site.types, "booking site");
+    }
 
     // Populate the process-global runtime-settings cache (base URL, private-host
     // allowlist) so synchronous readers and email/link builders see DB values.
@@ -967,6 +985,7 @@ pub async fn create_router(
         csp_baseline: build_csp(&None),
         german_formal: std::sync::atomic::AtomicBool::new(initial_german_formal),
         admin_figures: admin_stats::FiguresCache::default(),
+        sites: sites.clone(),
     });
 
     Router::new()
@@ -978,6 +997,7 @@ pub async fn create_router(
         .merge(api::router())
         .merge(api_tokens::router())
         .route("/", get(root_redirect))
+        .route("/skin/{skin}/{file}", get(serve_skin))
         .route("/dashboard", get(dashboard))
         .route("/dashboard/event-types", get(dashboard_event_types))
         .route(
@@ -1376,6 +1396,11 @@ pub async fn create_router(
         // Legacy single-user routes (kept for backward compatibility)
         .route("/{slug}", get(show_slots))
         .route("/{slug}/book", get(show_book_form).post(handle_booking))
+        // Fork: resolve the booking site from Host; 404 for non-public paths there.
+        .layer(axum::middleware::from_fn_with_state(
+            sites,
+            sites::site_middleware,
+        ))
         // OAuth callback query strings contain authorization codes/state.
         // Record only paths, never the default full request URI.
         .layer(TraceLayer::new_for_http().make_span_with(
@@ -1430,6 +1455,17 @@ pub async fn create_router(
         ))
         .layer(axum::middleware::from_fn(peer_addr_middleware))
         .with_state(state)
+}
+
+/// Fork: `GET /skin/{skin}/{file}`.
+async fn serve_skin(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((skin, file)): Path<(String, String)>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    let versioned = query.is_some_and(|q| q.starts_with("v="));
+    sites::serve_skin_file(&state.sites, &headers, &skin, &file, versioned).await
 }
 
 /// Helper: create impersonation template context values (active, target_name, admin_name).

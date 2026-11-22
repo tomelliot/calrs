@@ -110,10 +110,30 @@ impl SmtpConfig {
     pub(super) fn message_from(&self, sender: Sender<'_>) -> Result<MessageBuilder> {
         match sender {
             Sender::Instance => Ok(Message::builder().from(self.mailbox_from()?)),
-            Sender::Host { name, email, lang } => {
-                let display = guest_sender_name(lang, name, self.from_name.as_deref());
+            Sender::Host {
+                name,
+                email,
+                lang,
+                uid,
+            } => {
+                // Fork: a booking made on a booking site is sent from that
+                // site's address, name and Reply-To.
+                let site = uid.and_then(crate::web::sites::for_booking);
+                let from_email = site
+                    .as_ref()
+                    .and_then(|s| s.from_email.as_deref())
+                    .unwrap_or(&self.from_email);
+                let from_name = site
+                    .as_ref()
+                    .and_then(|s| s.from_name.as_deref())
+                    .or(self.from_name.as_deref());
+                let email = site
+                    .as_ref()
+                    .and_then(|s| s.reply_to.as_deref())
+                    .unwrap_or(email);
+                let display = guest_sender_name(lang, name, from_name);
                 let mut builder =
-                    Message::builder().from(Mailbox::new(display, self.from_email.parse()?));
+                    Message::builder().from(Mailbox::new(display, from_email.parse()?));
                 if let Some(reply_to) = host_reply_to(email) {
                     builder = builder.reply_to(reply_to);
                 }
@@ -138,6 +158,9 @@ pub(super) enum Sender<'a> {
         name: &'a str,
         email: &'a str,
         lang: &'a str,
+        /// Fork: the booking's uid, so a booking made on a booking site is
+        /// sent from that site (`web::sites`). `None` for mail with no booking.
+        uid: Option<&'a str>,
     },
 }
 
@@ -148,6 +171,7 @@ impl<'a> Sender<'a> {
             name: &details.host_name,
             email: &details.host_email,
             lang: guest_lang(details),
+            uid: Some(&details.uid),
         }
     }
 
@@ -158,6 +182,18 @@ impl<'a> Sender<'a> {
             name: &details.host_name,
             email: &details.host_email,
             lang: lang_or_en(details.guest_language.as_deref()),
+            uid: Some(&details.uid),
+        }
+    }
+}
+
+/// Fork: rewrites the texts of a guest email for the site its booking was made
+/// on (links and the host's address, see `web::sites::guest_text`). Nothing
+/// changes for a booking made elsewhere.
+pub(super) fn site_rewrite(uid: &str, host_email: &str, texts: &mut [&mut String]) {
+    if let Some(site) = crate::web::sites::for_booking(uid) {
+        for text in texts.iter_mut() {
+            **text = crate::web::sites::guest_text(&site, host_email, text);
         }
     }
 }

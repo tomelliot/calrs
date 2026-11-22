@@ -213,6 +213,7 @@ base-loader-please-wait = Even geduld, de nieuwste agendagegevens worden geladen
 base-stop-impersonating = Stoppen met meekijken als gebruiker
 base-theme-toggle = Thema wisselen
 base-powered-by = Mogelijk gemaakt door
+site-source-link = Broncode
 
 # Profile (templates/profile.html)
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ host_name }}, calrs{% endblock %}
+{% block title %}{% set _s = (site() if site is defined else none) %}{% if _s %}{{ _s.title }}{% else %}{{ host_name }}, calrs{% endif %}{% endblock %}
 {% block head %}{% include "partials/landing_head.html" %}{% endblock %}
 {% block content %}
 <section class="lp-top">
@@ -25,4 +25,4 @@
 {% with href_kind = "u", href_owner = username, href_tail = "", empty_text = t("profile-no-event-type") %}{% include "partials/landing_list.html" %}{% endwith %}
 {% include "partials/landing_script.html" %}
 {% endblock %}
-{% block footer %}<div class="lp-foot">{{ t("base-powered-by") }} <a href="https://cal.rs">calrs</a> <img src="/brand-logo" alt=""></div>{% endblock %}
+{% block footer %}{% set _s = (site() if site is defined else none) %}{% if _s %}<div class="lp-foot site-foot">{{ _s.title }} · <a href="{{ _s.source_url }}">{{ t("site-source-link") }}</a></div>{% else %}<div class="lp-foot">{{ t("base-powered-by") }} <a href="https://cal.rs">calrs</a> <img src="/brand-logo" alt=""></div>{% endif %}{% endblock %}

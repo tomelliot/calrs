@@ -967,6 +967,8 @@ pub(super) async fn user_profile(
     .await
     .unwrap_or_default();
     let event_types = without_expired(&state.pool, event_types, |row| &row.5).await;
+    // Fork: a booking site lists only its own meeting types.
+    let event_types = super::sites::retain_offered(event_types, |row| row.0.as_str());
 
     let tmpl = match state.templates.get_template("profile.html") {
         Ok(t) => t,

@@ -5,6 +5,8 @@
     dark-only logo shows in the dark theme only: made for a dark background,
     it may not read on a light page. -#}
 {% set logo = company_logo() %}
+{#- Fork: on a booking site the logo links to the domain's main site. #}
+{% set _site = (site() if site is defined else none) %}{% if _site %}{% set company_link = _site.link %}{% endif %}
 {% if logo.light or logo.dark %}
 <script>
 // When the image the visitor is looking at fails, the block goes away rather

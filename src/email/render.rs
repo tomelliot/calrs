@@ -926,9 +926,22 @@ pub(super) async fn send_composed(
     config: &SmtpConfig,
     sender: Sender<'_>,
     to: Mailbox,
-    mail: ComposedEmail,
-    ics: Option<(&str, String, &str)>,
+    mut mail: ComposedEmail,
+    mut ics: Option<(&str, String, &str)>,
 ) -> Result<()> {
+    // Fork: a guest email for a booking made on a booking site.
+    if let Sender::Host {
+        uid: Some(uid),
+        email,
+        ..
+    } = sender
+    {
+        let mut texts = vec![&mut mail.plain, &mut mail.html];
+        if let Some((_, ics_text, _)) = ics.as_mut() {
+            texts.push(ics_text);
+        }
+        super::transport::site_rewrite(uid, email, &mut texts);
+    }
     let body = build_multipart_body(&mail.plain, &mail.html);
     let builder = config.message_from(sender)?.to(to).subject(mail.subject);
     let email = match ics {

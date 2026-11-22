@@ -213,6 +213,7 @@ base-loader-please-wait = Aguarde, carregando os dados mais recentes do calendá
 base-stop-impersonating = Encerrar personificação
 base-theme-toggle = Alternar tema
 base-powered-by = Desenvolvido com
+site-source-link = Código-fonte
 
 # Profile (templates/profile.html)
 

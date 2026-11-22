@@ -222,6 +222,7 @@ base-loader-please-wait = Please wait, loading the latest calendar data...
 base-stop-impersonating = Stop impersonating
 base-theme-toggle = Toggle theme
 base-powered-by = Powered by
+site-source-link = Source code
 
 # Profile (templates/profile.html)
 
