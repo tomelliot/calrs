@@ -8,7 +8,7 @@
 # re-reads the secrets at every start, so a rotated password in bws takes
 # effect on the next restart.
 [Unit]
-Description=calrs booking server (book.tomelliot.net, book.coscope.ai)
+Description=calrs booking server (calendar.tomelliot.net, calendar.coscope.ai)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

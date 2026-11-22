@@ -8,7 +8,9 @@
 # Linked from the footer of every booking site.
 source_url = "https://github.com/tomelliot/calrs"
 
-[sites."book.tomelliot.net"]
+[sites."calendar.tomelliot.net"]
+# Former host: redirects here, and its bookings moved here.
+aliases = ["book.tomelliot.net"]
 skin = "tomelliot"
 title = "Tom Elliot"
 # calrs username whose meeting types the site offers.
@@ -19,7 +21,9 @@ link = "https://www.tomelliot.net"
 from_email = "tom@tomelliot.net"
 reply_to = "tom@tomelliot.net"
 
-[sites."book.coscope.ai"]
+[sites."calendar.coscope.ai"]
+# Former host: redirects here, and its bookings moved here.
+aliases = ["book.coscope.ai"]
 skin = "coscope"
 title = "coscope"
 user = "tom"

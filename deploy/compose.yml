@@ -5,8 +5,8 @@
 # CALRS_FASTMAIL_CALDAV_PASSWORD is not passed in: it is entered once when the
 # CalDAV source is added, and calrs stores it encrypted with CALRS_SECRET_KEY.
 #
-# The cloudflared-imp tunnel sends calrs.tomelliot.net, book.tomelliot.net and
-# book.coscope.ai to 127.0.0.1:3000. Nothing listens on a public port.
+# The cloudflared-imp tunnel sends calrs.tomelliot.net, calendar.tomelliot.net and
+# calendar.coscope.ai to 127.0.0.1:3000. Nothing listens on a public port.
 services:
   calrs:
     image: ghcr.io/tomelliot/calrs:${CALRS_TAG:?set in .env}

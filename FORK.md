@@ -46,7 +46,7 @@ An invalid `sites.toml` stops calrs at startup with a message naming the problem
 
 ## Deploying on imp
 
-Hosts: `calrs.tomelliot.net` (admin, `CALRS_BASE_URL`, behind Cloudflare Access), `book.tomelliot.net`, `book.coscope.ai`.
+Hosts: `calrs.tomelliot.net` (admin, `CALRS_BASE_URL`, behind Cloudflare Access), `calendar.tomelliot.net`, `calendar.coscope.ai`.
 
 1. **Data directory.** `mkdir -p /var/lib/calrs/skins`, copy `site/sites.toml` and `site/skins/*`, then `chown -R` it to the image's `calrs` user (`docker run --rm --entrypoint id ghcr.io/tomelliot/calrs:<tag> calrs`).
 2. **Secrets.** In Bitwarden Secrets Manager, project `imp`: `CALRS_SECRET_KEY` (base64 of 32 random bytes), `CALRS_FASTMAIL_SMTP_PASSWORD` and `CALRS_FASTMAIL_CALDAV_PASSWORD` (Fastmail app passwords, SMTP only and CalDAV only). Put the Fastmail login in `/opt/calrs/.env` as `CALRS_SMTP_USERNAME=…`.
