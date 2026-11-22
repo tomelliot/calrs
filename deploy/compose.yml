@@ -26,8 +26,9 @@ services:
       # Fastmail SMTP. The login may send as any verified identity, so each
       # site's from_email in sites.toml must be one.
       CALRS_SMTP_HOST: smtp.fastmail.com
-      CALRS_SMTP_PORT: "465"
-      CALRS_SMTP_TLS_MODE: tls
+      # 587 with STARTTLS: Hetzner blocks outgoing 465 (and 25).
+      CALRS_SMTP_PORT: "587"
+      CALRS_SMTP_TLS_MODE: starttls
       # The Fastmail login (not a secret), e.g. in /opt/calrs/.env.
       CALRS_SMTP_USERNAME: ${CALRS_SMTP_USERNAME:?set in .env}
       CALRS_SMTP_PASSWORD: ${CALRS_FASTMAIL_SMTP_PASSWORD:?set by bws-env}
