@@ -214,6 +214,8 @@ base-stop-impersonating = Arrêter l'usurpation
 base-theme-toggle = Changer de thème
 base-powered-by = Propulsé par
 site-source-link = Code source
+etf-booking-sites = Sites de réservation
+etf-booking-sites-hint = Les domaines dont la page de réservation propose ce type de rendez-vous.
 
 # Profile (templates/profile.html)
 

@@ -85,6 +85,31 @@
     <input type="text" id="slug" name="slug" value="{{ form_slug }}" placeholder="{{ t('etf-slug-placeholder') }}" pattern="[a-z0-9\-]*" title="{{ t('team-form-slug-pattern-title') }}">
   </div>
 
+  {#- Fork: the booking sites (domains) this meeting type is offered on. The
+      checkboxes write the hidden field, which is posted only when shown. #}
+  {% if booking_sites is defined and booking_sites %}
+  <div class="form-group" id="booking-sites">
+    <label>{{ t("etf-booking-sites") }} <span class="hint">{{ t("etf-booking-sites-hint") }}</span></label>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+      {% for site in booking_sites %}
+      <label style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.4rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; cursor: pointer; font-weight: 500;">
+        <input type="checkbox" class="site-check" value="{{ site.host }}" {% if site.checked %}checked{% endif %} style="accent-color: var(--ink);">
+        {{ site.domain }}
+      </label>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="site_hosts" id="site_hosts" value="{{ selected_site_hosts }}">
+    <script>
+    document.querySelectorAll('.site-check').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var checked = Array.prototype.map.call(document.querySelectorAll('.site-check:checked'), function (c) { return c.value; });
+        document.getElementById('site_hosts').value = checked.join(',');
+      });
+    });
+    </script>
+  </div>
+  {% endif %}
+
   <div class="form-group">
     <label for="description">{{ t("team-form-description") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
     <div style="border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;">

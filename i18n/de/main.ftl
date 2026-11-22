@@ -214,6 +214,8 @@ base-stop-impersonating = Identitätswechsel beenden
 base-theme-toggle = Design wechseln
 base-powered-by = Läuft mit
 site-source-link = Quellcode
+etf-booking-sites = Buchungsseiten
+etf-booking-sites-hint = Die Domains, deren Buchungsseite diesen Termintyp anbietet.
 
 # Profile (templates/profile.html)
 

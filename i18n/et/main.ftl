@@ -214,6 +214,8 @@ base-stop-impersonating = Lõpeta teise kasutajana toimetamine
 base-theme-toggle = Vaheta teemat
 base-powered-by = Töötab platvormil
 site-source-link = Lähtekood
+etf-booking-sites = Broneerimissaidid
+etf-booking-sites-hint = Domeenid, mille broneerimisleht pakub seda kohtumise tüüpi.
 
 # Profile (templates/profile.html)
 

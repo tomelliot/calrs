@@ -1,6 +1,7 @@
 //! Booking sites (fork addition): one calrs instance serves several booking
 //! hosts, such as `book.tomelliot.net` and `book.coscope.ai`. Each host has its
-//! own skin, its own list of meeting types and its own email sender.
+//! own skin and its own email sender. Which meeting types a site offers is
+//! chosen per event type in the event type form (`event_type_sites`).
 //!
 //! Configured in `<data_dir>/sites.toml`. Without that file nothing changes:
 //! every host behaves like stock calrs.
@@ -57,7 +58,6 @@ struct SiteConfig {
     title: String,
     /// Username whose meeting types this site offers.
     user: String,
-    types: Vec<String>,
     /// The main site of the domain, linked from the logo.
     link: Option<String>,
     from_email: Option<String>,
@@ -80,7 +80,6 @@ pub struct Site {
     pub skin: String,
     pub title: String,
     pub user: String,
-    pub types: Vec<String>,
     pub link: Option<String>,
     pub from_email: Option<String>,
     pub from_name: Option<String>,
@@ -90,8 +89,13 @@ pub struct Site {
 }
 
 impl Site {
-    pub fn offers(&self, slug: &str) -> bool {
-        self.types.iter().any(|t| t == slug)
+    /// The domain the site belongs to, its name in the UI: the host without
+    /// its first label (`book.coscope.ai` → `coscope.ai`).
+    pub fn domain(&self) -> &str {
+        match self.host.split_once('.') {
+            Some((_, rest)) if rest.contains('.') => rest,
+            _ => &self.host,
+        }
     }
 
     /// URL of a skin file with its version, `None` when the skin lacks it.
@@ -179,12 +183,6 @@ impl Sites {
                     )
                 })?;
             let ctx = |msg: &str| anyhow::anyhow!("[sites.\"{host}\"]: {msg}");
-            if site.types.is_empty() {
-                return Err(ctx("types is empty"));
-            }
-            if let Some(slug) = site.types.iter().find(|s| !is_slug(s)) {
-                return Err(ctx(&format!("\"{slug}\" in types is not a slug")));
-            }
             if !is_slug(&site.skin) {
                 return Err(ctx("skin must be a folder name (letters, digits, - and _)"));
             }
@@ -232,7 +230,6 @@ impl Sites {
                 skin: site.skin,
                 title: site.title,
                 user: site.user,
-                types: site.types,
                 link: site.link,
                 from_email: site.from_email,
                 from_name: site.from_name,
@@ -334,10 +331,20 @@ fn request_host(req: &Request) -> Option<String> {
         .and_then(normalize_host)
 }
 
+/// What a site host does with a path.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Access<'a> {
+    Allowed,
+    Denied,
+    /// A meeting type's page: allowed when the type is offered on the site
+    /// ([`offers`]).
+    MeetingType(&'a str),
+}
+
 /// Paths a site host answers. Everything else is a 404 there, so the
 /// dashboard, sign-in, API, OAuth, MCP, team pages and host token pages are
 /// reachable only on the admin host.
-pub fn path_allowed(site: &Site, path: &str) -> bool {
+pub fn path_access<'a>(site: &Site, path: &'a str) -> Access<'a> {
     const STATIC_EXACT: &[&str] = &[
         "/",
         "/accent.css",
@@ -360,32 +367,64 @@ pub fn path_allowed(site: &Site, path: &str) -> bool {
         "/booking/ics/",
     ];
     if STATIC_EXACT.contains(&path) || STATIC_PREFIX.iter().any(|p| path.starts_with(p)) {
-        return true;
+        return Access::Allowed;
     }
-    let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    let segments: Vec<&'a str> = path.trim_start_matches('/').split('/').collect();
     match segments.as_slice() {
         // /{slug}, /{slug}/book
-        [slug] | [slug, "book"] => site.offers(slug),
+        [slug] | [slug, "book"] if !slug.is_empty() => Access::MeetingType(slug),
         // /u/{user}, /u/{user}/
-        ["u", user] | ["u", user, ""] => *user == site.user,
+        ["u", user] | ["u", user, ""] if *user == site.user => Access::Allowed,
         // /u/{user}/{slug}, /u/{user}/{slug}/book
-        ["u", user, slug] | ["u", user, slug, "book"] => *user == site.user && site.offers(slug),
-        _ => false,
+        ["u", user, slug] | ["u", user, slug, "book"] if *user == site.user && !slug.is_empty() => {
+            Access::MeetingType(slug)
+        }
+        _ => Access::Denied,
     }
 }
 
+/// Whether the site owner's enabled personal event type `slug` is offered on
+/// `site`. A failed read is "no".
+pub async fn offers(pool: &sqlx::SqlitePool, site: &Site, slug: &str) -> bool {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM event_types et
+             JOIN accounts a ON a.id = et.account_id
+             JOIN users u ON u.id = a.user_id
+             JOIN event_type_sites s ON s.event_type_id = et.id
+             WHERE et.slug = ? AND u.username = ? AND et.enabled = 1
+               AND et.team_id IS NULL AND s.site_host = ?)",
+    )
+    .bind(slug)
+    .bind(&site.user)
+    .bind(&site.host)
+    .fetch_one(pool)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!(error = %e, "cannot read event type sites");
+        false
+    })
+}
+
+/// State of [`site_middleware`].
+#[derive(Clone)]
+pub struct SiteLayer {
+    pub sites: Arc<Sites>,
+    pub pool: sqlx::SqlitePool,
+}
+
 /// Resolves the site of the request and runs the rest of the stack inside it.
-pub async fn site_middleware(
-    State(sites): State<Arc<Sites>>,
-    req: Request,
-    next: Next,
-) -> Response {
-    if sites.is_empty() {
+pub async fn site_middleware(State(layer): State<SiteLayer>, req: Request, next: Next) -> Response {
+    if layer.sites.is_empty() {
         return next.run(req).await;
     }
-    let site = request_host(&req).and_then(|host| sites.get(&host));
+    let site = request_host(&req).and_then(|host| layer.sites.get(&host));
     if let Some(site) = &site {
-        if !path_allowed(site, req.uri().path()) {
+        let allowed = match path_access(site, req.uri().path()) {
+            Access::Allowed => true,
+            Access::Denied => false,
+            Access::MeetingType(slug) => offers(&layer.pool, site, slug).await,
+        };
+        if !allowed {
             return (StatusCode::NOT_FOUND, "Not found").into_response();
         }
     }
@@ -488,6 +527,14 @@ pub async fn install(sites: Arc<Sites>, pool: &sqlx::SqlitePool) {
     if let Ok(mut map) = BOOKING_HOSTS.write() {
         map.extend(rows);
     }
+    let stored: Vec<String> = sqlx::query_scalar("SELECT DISTINCT site_host FROM event_type_sites")
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+    let unknown: Vec<&String> = stored.iter().filter(|h| sites.get(h).is_none()).collect();
+    if !unknown.is_empty() {
+        tracing::warn!(hosts = ?unknown, "event types are offered on hosts no longer in sites.toml; they appear on no site");
+    }
     if let Ok(mut registry) = REGISTRY.write() {
         *registry = Some(sites);
     }
@@ -541,16 +588,143 @@ pub fn guest_text(site: &Site, host_email: &str, text: &str) -> String {
     text
 }
 
-/// Keeps the rows of a public list the current site offers; all rows outside
-/// a site host.
-pub fn retain_offered<T>(rows: Vec<T>, slug: impl Fn(&T) -> &str) -> Vec<T> {
-    match current() {
-        Some(site) => rows
+/// Keeps the rows of a public list (by event type id) that the current site
+/// offers; all rows outside a site host.
+pub async fn retain_offered<T>(
+    pool: &sqlx::SqlitePool,
+    rows: Vec<T>,
+    event_type_id: impl Fn(&T) -> &str,
+) -> Vec<T> {
+    let Some(site) = current() else { return rows };
+    let offered: std::collections::HashSet<String> =
+        sqlx::query_scalar("SELECT event_type_id FROM event_type_sites WHERE site_host = ?")
+            .bind(&site.host)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
             .into_iter()
-            .filter(|row| site.offers(slug(row)))
-            .collect(),
-        None => rows,
+            .collect();
+    rows.into_iter()
+        .filter(|row| offered.contains(event_type_id(row)))
+        .collect()
+}
+
+// --- Event type form: the "Booking sites" field ---
+
+/// The form's site choices: `(sites, selected)`, each site as
+/// `{host, domain, checked}`, and `selected` the checked hosts joined with
+/// commas (the hidden field's value). Empty when no site is configured.
+pub async fn form_choices(
+    sites: &Sites,
+    pool: &sqlx::SqlitePool,
+    event_type_id: Option<&str>,
+) -> (Vec<minijinja::Value>, String) {
+    let stored: Vec<String> = match event_type_id {
+        Some(id) => {
+            sqlx::query_scalar("SELECT site_host FROM event_type_sites WHERE event_type_id = ?")
+                .bind(id)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
+    form_choices_from(sites, &stored)
+}
+
+/// [`form_choices`] for a list of hosts already known (a form posted back
+/// with an error).
+pub fn form_choices_from(sites: &Sites, selected: &[String]) -> (Vec<minijinja::Value>, String) {
+    let all = sites.all();
+    let choices = all
+        .iter()
+        .map(|site| {
+            minijinja::context! {
+                host => &site.host,
+                domain => site.domain(),
+                checked => selected.contains(&site.host),
+            }
+        })
+        .collect();
+    let checked: Vec<&str> = all
+        .iter()
+        .filter(|site| selected.contains(&site.host))
+        .map(|site| site.host.as_str())
+        .collect();
+    (choices, checked.join(","))
+}
+
+/// The configured hosts in a posted `site_hosts` value; unknown ones dropped.
+pub fn posted_hosts(sites: &Sites, posted: &str) -> Vec<String> {
+    let mut hosts: Vec<String> = posted
+        .split(',')
+        .map(str::trim)
+        .filter(|h| sites.get(h).is_some())
+        .map(str::to_string)
+        .collect();
+    hosts.sort();
+    hosts.dedup();
+    hosts
+}
+
+/// Stores the posted site choice of an event type. `None` (the form did not
+/// show the field) leaves the stored choice alone. Rows for hosts no longer
+/// configured are kept, so renaming a host in sites.toml loses nothing.
+pub async fn save_choice(
+    sites: &Sites,
+    pool: &sqlx::SqlitePool,
+    event_type_id: &str,
+    posted: Option<&str>,
+) {
+    let Some(posted) = posted else { return };
+    if sites.is_empty() {
+        return;
     }
+    let hosts = posted_hosts(sites, posted);
+    let result = async {
+        let mut tx = pool.begin().await?;
+        for site in sites.all() {
+            sqlx::query("DELETE FROM event_type_sites WHERE event_type_id = ? AND site_host = ?")
+                .bind(event_type_id)
+                .bind(&site.host)
+                .execute(&mut *tx)
+                .await?;
+        }
+        for host in &hosts {
+            sqlx::query("INSERT INTO event_type_sites (event_type_id, site_host) VALUES (?, ?)")
+                .bind(event_type_id)
+                .bind(host)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await
+    }
+    .await;
+    if let Err(e) = result {
+        tracing::error!(error = %e, event_type = event_type_id, "cannot save the event type's booking sites");
+    }
+}
+
+/// Domains each event type is offered on, for the event types list.
+pub async fn domains_by_event_type(
+    sites: &Sites,
+    pool: &sqlx::SqlitePool,
+) -> HashMap<String, Vec<String>> {
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    if sites.is_empty() {
+        return map;
+    }
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT event_type_id, site_host FROM event_type_sites ORDER BY site_host")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+    for (id, host) in rows {
+        if let Some(site) = sites.get(&host) {
+            map.entry(id).or_default().push(site.domain().to_string());
+        }
+    }
+    map
 }
 
 #[cfg(test)]
@@ -576,14 +750,12 @@ source_url = "https://github.com/example/calrs"
 skin = "a"
 title = "A"
 user = "tom"
-types = ["intro", "consulting"]
 from_email = "tom@a.example"
 
 [sites."book.b.example"]
 skin = "b"
 title = "B"
 user = "tom"
-types = ["demo"]
 "#;
 
     fn sites() -> Sites {
@@ -609,7 +781,6 @@ types = ["demo"]
     fn loads_sites_and_skins() {
         let sites = sites();
         let a = sites.get("book.a.example").unwrap();
-        assert!(a.offers("intro") && !a.offers("demo"));
         assert!(a
             .file_url("skin.css")
             .unwrap()
@@ -617,6 +788,7 @@ types = ["demo"]
         assert!(a.logo_url().is_some());
         assert!(a.file_url("notes.txt").is_none());
         assert_eq!(a.base_url(), "https://book.a.example");
+        assert_eq!(a.domain(), "a.example");
         assert!(sites.get("calrs.a.example").is_none());
     }
 
@@ -631,20 +803,16 @@ types = ["demo"]
         let dir = skins_dir(&["a"]);
         let bad = |text: &str| Sites::parse(text, dir.path()).unwrap_err().to_string();
         let base = "source_url = \"https://x.example\"\n";
+        let site = |host: &str, extra: &str| {
+            format!("{base}[sites.\"{host}\"]\nskin=\"a\"\ntitle=\"A\"\nuser=\"t\"\n{extra}")
+        };
+        assert!(bad(&site("Book.A", "")).contains("lowercase"));
         assert!(bad(&format!(
-            "{base}[sites.\"Book.A\"]\nskin=\"a\"\ntitle=\"A\"\nuser=\"t\"\ntypes=[\"x\"]"
-        ))
-        .contains("lowercase"));
-        assert!(bad(&format!(
-            "{base}[sites.\"book.a\"]\nskin=\"a\"\ntitle=\"A\"\nuser=\"t\"\ntypes=[]"
-        ))
-        .contains("types is empty"));
-        assert!(bad(&format!(
-            "{base}[sites.\"book.a\"]\nskin=\"zz\"\ntitle=\"A\"\nuser=\"t\"\ntypes=[\"x\"]"
+            "{base}[sites.\"book.a\"]\nskin=\"zz\"\ntitle=\"A\"\nuser=\"t\""
         ))
         .contains("skin \"zz\""));
-        assert!(bad(&format!("{base}[sites.\"book.a\"]\nskin=\"a\"\ntitle=\"A\"\nuser=\"t\"\ntypes=[\"x\"]\nfrom_email=\"nope\"")).contains("from_email"));
-        assert!(bad(&format!("{base}[sites.\"book.a\"]\nskin=\"a\"\ntitle=\"A\"\nuser=\"t\"\ntypes=[\"x\"]\ncolour=\"red\"")).contains("colour"));
+        assert!(bad(&site("book.a", "from_email=\"nope\"")).contains("from_email"));
+        assert!(bad(&site("book.a", "colour=\"red\"")).contains("colour"));
         assert!(bad("source_url = \"http://x.example\"").contains("https"));
     }
 
@@ -654,12 +822,8 @@ types = ["demo"]
         let a = sites.get("book.a.example").unwrap();
         for ok in [
             "/",
-            "/intro",
-            "/intro/book",
             "/u/tom",
             "/u/tom/",
-            "/u/tom/consulting",
-            "/u/tom/consulting/book",
             "/booking/cancel/abc",
             "/booking/reschedule/abc",
             "/booking/ics/abc",
@@ -668,20 +832,27 @@ types = ["demo"]
             "/skin/a/skin.css",
             "/avatar/123",
         ] {
-            assert!(path_allowed(&a, ok), "{ok} should be allowed");
+            assert_eq!(path_access(&a, ok), Access::Allowed, "{ok}");
+        }
+        for (path, slug) in [
+            ("/intro", "intro"),
+            ("/intro/book", "intro"),
+            ("/u/tom/consulting", "consulting"),
+            ("/u/tom/consulting/book", "consulting"),
+            // Reserved words are meeting types here; no type has that slug.
+            ("/dashboard", "dashboard"),
+            ("/mcp", "mcp"),
+            ("/embed.js", "embed.js"),
+        ] {
+            assert_eq!(path_access(&a, path), Access::MeetingType(slug), "{path}");
         }
         for blocked in [
-            "/demo",
-            "/demo/book",
-            "/u/tom/demo",
             "/u/alice",
             "/u/alice/intro",
-            "/dashboard",
             "/dashboard/bookings",
             "/auth/login",
             "/api/v1/openapi.json",
             "/oauth/authorize",
-            "/mcp",
             "/.well-known/oauth-authorization-server",
             "/booking/approve/abc",
             "/booking/decline/abc",
@@ -689,11 +860,26 @@ types = ["demo"]
             "/team/x",
             "/g/x",
             "/t/x",
-            "/embed.js",
             "/intro/book/extra",
         ] {
-            assert!(!path_allowed(&a, blocked), "{blocked} should be blocked");
+            assert_eq!(path_access(&a, blocked), Access::Denied, "{blocked}");
         }
+    }
+
+    #[test]
+    fn posted_hosts_keep_only_configured_sites() {
+        let sites = sites();
+        assert_eq!(
+            posted_hosts(
+                &sites,
+                "book.b.example, evil.example,book.a.example,book.a.example"
+            ),
+            vec!["book.a.example", "book.b.example"]
+        );
+        assert!(posted_hosts(&sites, "").is_empty());
+        let (choices, selected) = form_choices_from(&sites, &["book.b.example".to_string()]);
+        assert_eq!(choices.len(), 2);
+        assert_eq!(selected, "book.b.example");
     }
 
     #[tokio::test]
@@ -705,11 +891,5 @@ types = ["demo"]
             .scope(a, async { current().map(|s| s.host.clone()) })
             .await;
         assert_eq!(host.as_deref(), Some("book.a.example"));
-        let kept = CURRENT
-            .scope(sites.get("book.b.example"), async {
-                retain_offered(vec!["intro", "demo"], |s| s)
-            })
-            .await;
-        assert_eq!(kept, vec!["demo"]);
     }
 }

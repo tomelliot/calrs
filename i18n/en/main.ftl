@@ -223,6 +223,8 @@ base-stop-impersonating = Stop impersonating
 base-theme-toggle = Toggle theme
 base-powered-by = Powered by
 site-source-link = Source code
+etf-booking-sites = Booking sites
+etf-booking-sites-hint = The domains whose booking page offers this meeting type.
 
 # Profile (templates/profile.html)
 

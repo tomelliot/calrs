@@ -140,6 +140,14 @@ async fn seed_children(pool: &SqlitePool, user_id: &str, et_id: &str) {
         .unwrap();
     let resource_id = insert_resource(pool, "Lab").await;
     attach_resource(pool, et_id, &resource_id).await;
+    // Fork: booking sites.
+    sqlx::query(
+        "INSERT INTO event_type_sites (event_type_id, site_host) VALUES (?, 'book.a.test')",
+    )
+    .bind(et_id)
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -184,6 +192,7 @@ async fn duplicate_copies_settings_and_children_and_opens_the_copy() {
         "event_type_calendars",
         "booking_frequency_limits",
         "event_type_resources",
+        "event_type_sites",
     ] {
         assert_eq!(
             count_where(&pool, table, &copy_id).await,

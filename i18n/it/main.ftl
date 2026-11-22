@@ -214,6 +214,8 @@ base-stop-impersonating = Termina impersonificazione
 base-theme-toggle = Cambia tema
 base-powered-by = Offerto da
 site-source-link = Codice sorgente
+etf-booking-sites = Siti di prenotazione
+etf-booking-sites-hint = I domini la cui pagina di prenotazione offre questo tipo di incontro.
 
 # Profile (templates/profile.html)
 

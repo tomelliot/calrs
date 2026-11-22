@@ -63,6 +63,8 @@
           {% if et.visibility == "internal" %}<span class="badge badge-info">{{ t("event-types-badge-internal") }}</span>{% endif %}
           {% if et.visibility == "private" %}<span class="badge badge-muted">{{ t("event-types-badge-private") }}</span>{% endif %}
           {% if et.resource_names %}<span class="badge badge-muted" title="{{ et.resource_names }}">{{ t("event-types-badge-resources") }}</span>{% endif %}
+          {#- Fork: the booking sites it is offered on. #}
+          {% for domain in et.site_domains | default([]) %}<span class="badge badge-muted">{{ domain }}</span>{% endfor %}
           {% if et.date_range %}<span class="badge {% if et.date_range_state == 'expired' %}badge-disabled{% else %}badge-info{% endif %}">{{ et.date_range }}</span>{% if et.date_range_state == "active" %}<span class="badge badge-success">{{ t("event-types-badge-active") }}</span>{% elif et.date_range_state == "expired" %}<span class="badge badge-disabled">{{ t("event-types-badge-expired") }}</span>{% endif %}{% endif %}
           {% if et.visibility == "private" or et.visibility == "internal" %}
             <a href="/dashboard/invites/{{ et.id }}" class="et-invites-link">{{ t("event-types-send-invites") }}</a>

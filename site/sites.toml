@@ -1,4 +1,6 @@
 # Booking sites served by this calrs instance (fork feature, see FORK.md).
+# Which meeting types each site offers is chosen in the event type form
+# ("Booking sites"), by domain.
 # Deployed to <data_dir>/sites.toml with skins/ beside it. Restart calrs after
 # a change. A request on a host not listed here behaves like stock calrs.
 
@@ -11,8 +13,6 @@ skin = "tomelliot"
 title = "Tom Elliot"
 # calrs username whose meeting types the site offers.
 user = "tom"
-# Event type slugs offered here. Anything else is a 404 on this host.
-types = ["chat"]
 link = "https://www.tomelliot.net"
 # Guest emails: a Fastmail sending identity on the same SMTP login.
 from_email = "tom@tomelliot.net"
@@ -23,7 +23,6 @@ reply_to = "tom@tomelliot.net"
 skin = "coscope"
 title = "coscope"
 user = "tom"
-types = ["demo"]
 link = "https://coscope.ai"
 from_email = "tom@coscope.ai"
 from_name = "Tom at coscope"

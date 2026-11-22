@@ -214,6 +214,8 @@ base-stop-impersonating = Stoppen met meekijken als gebruiker
 base-theme-toggle = Thema wisselen
 base-powered-by = Mogelijk gemaakt door
 site-source-link = Broncode
+etf-booking-sites = Boekingssites
+etf-booking-sites-hint = De domeinen waarvan de boekingspagina dit afspraaktype aanbiedt.
 
 # Profile (templates/profile.html)
 

@@ -214,6 +214,8 @@ base-stop-impersonating = Encerrar personificação
 base-theme-toggle = Alternar tema
 base-powered-by = Desenvolvido com
 site-source-link = Código-fonte
+etf-booking-sites = Sites de agendamento
+etf-booking-sites-hint = Os domínios cuja página de agendamento oferece este tipo de reunião.
 
 # Profile (templates/profile.html)
 

@@ -223,6 +223,8 @@ base-stop-impersonating = Вернуться в свой аккаунт
 base-theme-toggle = Сменить тему
 base-powered-by = Работает на
 site-source-link = Исходный код
+etf-booking-sites = Сайты бронирования
+etf-booking-sites-hint = Домены, на странице бронирования которых доступен этот тип встречи.
 
 # Profile (templates/profile.html)
 

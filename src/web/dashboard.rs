@@ -506,6 +506,8 @@ pub(super) async fn dashboard_event_types(
     for (etid, rname) in resource_name_rows {
         resource_names_map.entry(etid).or_default().push(rname);
     }
+    // Fork: the domains each personal event type is offered on.
+    let site_domains = super::sites::domains_by_event_type(&state.sites, &state.pool).await;
     let resource_names_for = |etid: &str| {
         resource_names_map
             .get(etid)
@@ -596,6 +598,7 @@ pub(super) async fn dashboard_event_types(
                 overrides_url => overrides_url(id),
                 embed_url => format!("/dashboard/event-types/{}/embed", slug),
                 resource_names => resource_names_for(id),
+                site_domains => site_domains.get(id.as_str()).cloned().unwrap_or_default(),
                 date_range => date_range_for(id).0,
                 date_range_state => date_range_for(id).1,
                 view_url => if vis != "private" { user.username.as_ref().map(|u| format!("/u/{}/{}", u, slug)) } else { None::<String> },

@@ -938,7 +938,7 @@ pub async fn create_router(
         sites::install(sites.clone(), &pool).await;
     }
     for site in sites.all() {
-        tracing::info!(host = %site.host, skin = %site.skin, types = ?site.types, "booking site");
+        tracing::info!(host = %site.host, skin = %site.skin, "booking site");
     }
 
     // Populate the process-global runtime-settings cache (base URL, private-host
@@ -1398,7 +1398,10 @@ pub async fn create_router(
         .route("/{slug}/book", get(show_book_form).post(handle_booking))
         // Fork: resolve the booking site from Host; 404 for non-public paths there.
         .layer(axum::middleware::from_fn_with_state(
-            sites,
+            sites::SiteLayer {
+                sites,
+                pool: state.pool.clone(),
+            },
             sites::site_middleware,
         ))
         // OAuth callback query strings contain authorization codes/state.

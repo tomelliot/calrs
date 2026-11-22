@@ -296,6 +296,9 @@ pub(super) struct EventTypeForm {
     pub(super) write_calendar_id: Option<String>,
     pub(super) resource_ids: Option<String>,
     resource_scheduling_mode: Option<String>,
+    /// Fork: booking site hosts, comma-joined. Absent when the form did not
+    /// show the field, which leaves the stored choice alone.
+    pub(super) site_hosts: Option<String>,
     // Reminder
     #[serde(default)]
     pub(super) reminder_minutes: String,
@@ -754,6 +757,7 @@ pub(super) async fn new_event_type_form(
     let (resources_all, selected_resource_ids, resource_scheduling_mode) =
         resources_form_ctx(&state.pool, None, &attachable).await;
     let (impersonating, impersonating_name, _) = impersonation_ctx(&auth_user);
+    let fork_sites = super::sites::form_choices(&state.sites, &state.pool, None).await;
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "event-types"),
@@ -776,6 +780,9 @@ pub(super) async fn new_event_type_form(
             form_guest_email_footer => "",
             selected_resource_ids => selected_resource_ids,
             resource_scheduling_mode => resource_scheduling_mode,
+            // Fork: booking sites.
+            booking_sites => fork_sites.0.clone(),
+            selected_site_hosts => fork_sites.1.clone(),
             form_title => "",
             form_slug => "",
             form_description => "",
@@ -1158,6 +1165,17 @@ pub(super) async fn create_event_type(
     )
     .await;
 
+    // Fork: the booking sites, for personal event types.
+    if team_id.is_none() {
+        super::sites::save_choice(
+            &state.sites,
+            &state.pool,
+            &et_id,
+            form.site_hosts.as_deref(),
+        )
+        .await;
+    }
+
     after_event_type_save(
         &state.pool,
         &et_id,
@@ -1402,6 +1420,7 @@ pub(super) async fn edit_event_type_form(
     .await;
     let (resources_all, selected_resource_ids2, resource_scheduling_mode) =
         resources_form_ctx(&state.pool, Some(&et_id), &attachable).await;
+    let fork_sites = super::sites::form_choices(&state.sites, &state.pool, Some(&et_id)).await;
     Html(
         tmpl.render(context! {
             editing => true,
@@ -1426,6 +1445,9 @@ pub(super) async fn edit_event_type_form(
             form_guest_email_footer => form_guest_email_footer,
             selected_resource_ids => selected_resource_ids2,
             resource_scheduling_mode => resource_scheduling_mode,
+            // Fork: booking sites.
+            booking_sites => fork_sites.0.clone(),
+            selected_site_hosts => fork_sites.1.clone(),
             form_title => et_title,
             form_slug => et_slug,
             form_description => et_desc.unwrap_or_default(),
@@ -1843,6 +1865,15 @@ pub(super) async fn update_event_type(
         None,
         &form.resource_ids,
         &form.resource_scheduling_mode,
+    )
+    .await;
+
+    // Fork: the booking sites.
+    super::sites::save_choice(
+        &state.sites,
+        &state.pool,
+        &et_id,
+        form.site_hosts.as_deref(),
     )
     .await;
 
@@ -2588,6 +2619,10 @@ async fn render_event_type_form_error(
     };
 
     let (impersonating, impersonating_name, _) = impersonation_ctx(auth_user);
+    let fork_sites = super::sites::form_choices_from(
+        &state.sites,
+        &super::sites::posted_hosts(&state.sites, form.site_hosts.as_deref().unwrap_or("")),
+    );
     Html(
         tmpl.render(context! {
             resources_all => resources_all,
@@ -2597,6 +2632,9 @@ async fn render_event_type_form_error(
             form_guest_email_footer => form_guest_email_footer,
             selected_resource_ids => form.resource_ids.clone().unwrap_or_default(),
             resource_scheduling_mode => form.resource_scheduling_mode.as_deref().unwrap_or("all"),
+            // Fork: booking sites.
+            booking_sites => fork_sites.0.clone(),
+            selected_site_hosts => fork_sites.1.clone(),
             editing => editing,
             overrides_url => match target {
                 FormTarget::EditPersonal { et_id, .. } | FormTarget::EditTeam { et_id, .. } => {
@@ -4253,7 +4291,7 @@ const SQL_UUID_V4: &str = "lower(hex(randomblob(4))) || '-' || lower(hex(randomb
 
 /// Child tables copied along with an event type: table, the columns after
 /// `event_type_id`, and whether rows carry their own `id` (minted fresh).
-const COPIED_CHILD_TABLES: [(&str, &str, bool); 9] = [
+const COPIED_CHILD_TABLES: [(&str, &str, bool); 10] = [
     (
         "availability_rules",
         "day_of_week, start_time, end_time",
@@ -4274,6 +4312,8 @@ const COPIED_CHILD_TABLES: [(&str, &str, bool); 9] = [
     ("event_type_watchers", "team_id", false),
     ("event_type_resources", "resource_id", false),
     ("event_type_write_targets", "user_id, calendar_id", false),
+    // Fork: the booking sites.
+    ("event_type_sites", "site_host", false),
     // The booking questions (#210), with fresh ids; past answers stay with
     // the original's bookings.
     (
