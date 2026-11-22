@@ -1,0 +1,378 @@
+{#- Fork: the booking form, shared by book.html and the slot page dialog
+    (partials/book_dialog.html). Needs `base`, the event type's path. #}
+{%- set _dialog_csrf = (booking_dialog_csrf() if booking_dialog_csrf is defined else none) %}
+{% if error %}
+  <div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST" action="{{ base }}/book{{ embed_qs_q | default('') }}">
+  {% if _dialog_csrf %}<input type="hidden" name="_csrf" value="{{ _dialog_csrf }}">{% endif %}
+  <input type="hidden" name="date" value="{{ date }}">
+  <input type="hidden" name="time" value="{{ time_start }}">
+  {% if guest_tz is defined and guest_tz %}<input type="hidden" name="tz" value="{{ guest_tz }}">{% endif %}
+  {% if invite_token is defined and invite_token %}<input type="hidden" name="invite_token" value="{{ invite_token }}">{% endif %}
+
+  <div class="form-group">
+    <label for="name">{{ t("book-name-label") }}</label>
+    <input type="text" id="name" name="name" required maxlength="255" value="{{ form_name }}" placeholder="{{ t('book-name-placeholder') }}">
+  </div>
+
+  <div class="form-group">
+    <label for="email">{{ t("book-email-label") }}</label>
+    <input type="email" id="email" name="email" required maxlength="255" value="{{ form_email }}" placeholder="{{ t('book-email-placeholder') }}" pattern="[^@\s]+@[^@\s]+\.[^@\s]{2,}" title="{{ t('book-email-invalid') }}">
+  </div>
+
+  {% if sms_phone_mode != "off" %}
+  {% set phone_required = sms_phone_mode == "required" %}
+  <link rel="stylesheet" href="/static/intl-tel-input/intlTelInput.min.css">
+  <div class="form-group">
+    <label for="phone">{{ t("book-phone-label") }} {% if not phone_required %}<span style="color: var(--text-muted); font-weight: 400;">{{ t("book-notes-optional") }}</span>{% endif %}</label>
+    <input type="tel" id="phone" name="phone" maxlength="32" inputmode="tel" autocomplete="tel" value="{{ form_phone }}" placeholder="{{ t('book-phone-placeholder') }}"{% if phone_required %} required{% endif %}>
+    <div id="phone-error" style="display: none; color: var(--error-text, #dc2626); font-size: 0.8rem; margin-top: 0.25rem;"></div>
+    <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.25rem;">
+      <span id="phone-help-country">{{ t("book-phone-help", country=phone_default_country) }}</span>
+      {% if not phone_required %}{{ t("book-phone-optional-consequence") }}{% endif %}
+    </div>
+  </div>
+  <script src="/static/intl-tel-input/intlTelInput.min.js"></script>
+  <script>
+  (function() {
+    var input = document.getElementById('phone');
+    var errEl = document.getElementById('phone-error');
+    // No JS, or the bundle failed to load: the field keeps its own name and
+    // posts the number as typed, which sms::phone::normalize still resolves
+    // against the configured country. Degrading to the previous behaviour is
+    // the point of leaving name="phone" on the visible input.
+    if (!input || !window.intlTelInput) return;
+
+    var DEFAULT_DIAL_CODE = {{ phone_default_country | tojson }};
+
+    // Only an explicit region subtag counts. A bare language tag is not a
+    // country: "sv" is Swedish, but as a region it reads as El Salvador, and
+    // "pt" would send Brazilian guests to Portugal. When the browser does not
+    // say which country it means, we do not guess, we use the one the
+    // operator configured.
+    function explicitRegion() {
+      var tags = (navigator.languages && navigator.languages.length)
+        ? navigator.languages
+        : [navigator.language || ''];
+      for (var i = 0; i < tags.length; i++) {
+        var tag = tags[i];
+        if (!tag) continue;
+        var region = null;
+        try {
+          region = new Intl.Locale(tag).region || null;
+        } catch (e) {
+          var m = /^[A-Za-z]{2,3}(?:-[A-Za-z]{4})?-([A-Za-z]{2})(?:-|$)/.exec(tag);
+          region = m ? m[1] : null;
+        }
+        // UN M49 codes such as es-419 are regions but not countries.
+        if (region && /^[A-Za-z]{2}$/.test(region)) return region.toLowerCase();
+      }
+      return null;
+    }
+
+    // Map the operator's dial code onto a country using the widget's own
+    // data, so there is no second table to keep in step with phone.rs.
+    function isoForDialCode(dial) {
+      var digits = String(dial || '').replace(/\D/g, '');
+      if (!digits || typeof window.intlTelInput.getCountryData !== 'function') return null;
+      var data = window.intlTelInput.getCountryData() || [];
+      var best = null;
+      for (var i = 0; i < data.length; i++) {
+        var c = data[i];
+        if (c.dialCode !== digits) continue;
+        // +1, +7 and +44 are shared; `priority` marks the primary country.
+        // Without this the list is name-sorted, so +1 would select American
+        // Samoa and +44 Guernsey.
+        if (!best || (c.priority || 0) < (best.priority || 0)) best = c;
+      }
+      return best ? best.iso2 : null;
+    }
+
+    // The widget offers a country-correct example once it owns the field, so
+    // the static placeholder and the "which country is assumed" hint both
+    // step aside. Both stay put when JS never runs, which is when they help.
+    input.removeAttribute('placeholder');
+    var helpCountry = document.getElementById('phone-help-country');
+    if (helpCountry) helpCountry.style.display = 'none';
+
+    var options = {
+      separateDialCode: true,
+      nationalMode: false,
+      autoPlaceholder: 'polite',
+      // 265 KB of libphonenumber, fetched only once the field is in play
+      // rather than on every booking page load.
+      loadUtils: function() { return import('/static/intl-tel-input/utils.js'); },
+      i18n: {
+        searchPlaceholder: {{ t("book-phone-country-search") | tojson }},
+        countrySelectorLabel: {{ t("book-phone-country-label") | tojson }},
+        selectedCountryAriaLabel: {{ t("book-phone-country-label") | tojson }},
+        noCountrySelected: {{ t("book-phone-country-none") | tojson }},
+        zeroSearchResults: {{ t("book-phone-country-no-results") | tojson }}
+      }
+    };
+    var seed = explicitRegion() || isoForDialCode(DEFAULT_DIAL_CODE);
+    if (seed) options.initialCountry = seed;
+
+    var iti = window.intlTelInput(input, options);
+
+    // The widget owns the visible field from here, so the value that reaches
+    // the server comes from a hidden twin carrying full E.164.
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'phone';
+    input.removeAttribute('name');
+    (input.form || document.body).appendChild(hidden);
+
+    function sync() {
+      var raw = input.value.trim();
+      if (raw === '') {
+        hidden.value = '';
+        return;
+      }
+      var full = (typeof iti.getNumber === 'function' ? iti.getNumber() : '') || '';
+      if (!full) {
+        // utils.js has not landed yet, so getNumber() is still empty. A guest
+        // who types a number and submits inside that window must not be
+        // silently dropped, so build E.164 from the country the picker is
+        // actually on. Overwritten with the canonical value the moment the
+        // promise resolves, and the server normalises whatever arrives.
+        var cleaned = raw.replace(/[\s\-().\/]/g, '');
+        if (cleaned.charAt(0) === '+' || cleaned.slice(0, 2) === '00') {
+          full = cleaned;
+        } else {
+          var cd = typeof iti.getSelectedCountryData === 'function'
+            ? iti.getSelectedCountryData()
+            : null;
+          var national = cleaned.replace(/\D/g, '').replace(/^0/, '');
+          full = (cd && cd.dialCode && national)
+            ? '+' + cd.dialCode + national
+            : cleaned;
+        }
+      }
+      hidden.value = full;
+    }
+    input.addEventListener('input', sync);
+    input.addEventListener('countrychange', sync);
+    sync();
+
+    // Once libphonenumber is in, re-sync so the canonical parse replaces the
+    // stopgap above. A rejected load keeps the stopgap rather than nothing.
+    if (iti.promise && typeof iti.promise.then === 'function') {
+      iti.promise.then(sync, function() {});
+    }
+
+    if (input.form) {
+      input.form.addEventListener('submit', function(e) {
+        sync();
+        if (input.value.trim() === '') {
+          // Empty is the guest declining SMS when optional, and the native
+          // required prompt's business when not.
+          errEl.style.display = 'none';
+          return;
+        }
+        // isValidNumber() only answers once utils.js has landed. Anything
+        // other than an outright false means "not yet known", and the server
+        // remains the authority either way.
+        if (typeof iti.isValidNumber === 'function' && iti.isValidNumber() === false) {
+          e.preventDefault();
+          errEl.textContent = {{ t("book-phone-invalid") | tojson }};
+          errEl.style.display = 'block';
+          input.focus();
+        } else {
+          errEl.style.display = 'none';
+        }
+      });
+    }
+  })();
+  </script>
+  {% endif %}
+  <script>
+  (function() {
+    var email = document.getElementById('email');
+    if (!email) return;
+    var msg = {{ t("book-email-invalid") | tojson }};
+    function update() {
+      if (email.validity.typeMismatch || email.validity.patternMismatch) {
+        email.setCustomValidity(msg);
+      } else {
+        email.setCustomValidity('');
+      }
+    }
+    email.addEventListener('input', update);
+    email.addEventListener('blur', update);
+  })();
+  </script>
+
+  {#- The host's booking questions (#210), in their order. Every field name
+      is unique (q_<id>, and q_<id>__<option id> per multiple-choice box),
+      so the form posts with no script. #}
+  {% if questions is defined and questions %}
+  <style>
+    .q-group { border: 0; padding: 0; margin: 0 0 1.25rem; min-width: 0; }
+    .q-group legend { display: block; font-weight: 500; margin-bottom: 0.375rem; font-size: 0.875rem; color: var(--text); padding: 0; }
+    .q-help { display: block; color: var(--text-muted); font-size: 0.8rem; margin-top: 0.25rem; }
+    .q-group legend + .q-help { margin: -0.125rem 0 0.375rem; }
+    .q-choice, .form-group label.q-choice { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.9rem; color: var(--text); margin: 0.25rem 0; cursor: pointer; font-weight: 400; }
+    .form-group .q-choice input, .q-choice input { width: auto; flex: 0 0 auto; margin: 0.2rem 0 0; accent-color: var(--accent); }
+    .q-group select, .form-group select.q-select { width: 100%; padding: 0.625rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); }
+    .q-consent a { color: var(--accent); }
+    .q-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  </style>
+  {% for q in questions %}
+  {% set help_id = q.html_id ~ "-help" %}
+  {% if q.kind == "short_text" or q.kind == "long_text" %}
+  <div class="form-group">
+    <label for="{{ q.html_id }}">{{ q.label }}{% if not q.required %} <span class="hint">{{ t("book-notes-optional") }}</span>{% endif %}</label>
+    {% if q.kind == "long_text" %}
+    <textarea id="{{ q.html_id }}" name="{{ q.name }}" maxlength="{{ q.max_len }}"{% if q.required %} required{% endif %}{% if q.help %} aria-describedby="{{ help_id }}"{% endif %}></textarea>
+    {% else %}
+    <input type="text" id="{{ q.html_id }}" name="{{ q.name }}" maxlength="{{ q.max_len }}"{% if q.required %} required{% endif %}{% if q.help %} aria-describedby="{{ help_id }}"{% endif %}>
+    {% endif %}
+    {% if q.help %}<span class="q-help" id="{{ help_id }}">{{ q.help }}</span>{% endif %}
+  </div>
+  {% elif q.kind == "single_choice" and q.as_select %}
+  <div class="form-group">
+    <label for="{{ q.html_id }}">{{ q.label }}{% if not q.required %} <span class="hint">{{ t("book-notes-optional") }}</span>{% endif %}</label>
+    <select class="q-select" id="{{ q.html_id }}" name="{{ q.name }}"{% if q.required %} required{% endif %}{% if q.help %} aria-describedby="{{ help_id }}"{% endif %}>
+      <option value="">{{ t("book-question-choose") }}</option>
+      {% for o in q.options %}<option value="{{ o.id }}">{{ o.label }}</option>{% endfor %}
+    </select>
+    {% if q.help %}<span class="q-help" id="{{ help_id }}">{{ q.help }}</span>{% endif %}
+  </div>
+  {% elif q.kind == "single_choice" or q.kind == "multiple_choice" %}
+  <fieldset class="q-group"{% if q.help %} aria-describedby="{{ help_id }}"{% endif %}>
+    <legend>{{ q.label }}{% if not q.required %} <span class="hint" style="color: var(--text-muted); font-weight: 400;">{{ t("book-notes-optional") }}</span>{% endif %}</legend>
+    {% if q.help %}<span class="q-help" id="{{ help_id }}">{{ q.help }}</span>{% endif %}
+    {% for o in q.options %}
+    <label class="q-choice" for="{{ o.html_id }}">
+      {% if q.kind == "single_choice" %}
+      <input type="radio" id="{{ o.html_id }}" name="{{ q.name }}" value="{{ o.id }}"{% if q.required %} required{% endif %}>
+      {% else %}
+      <input type="checkbox" id="{{ o.html_id }}" name="{{ o.name }}" value="1" data-q-group="{{ q.html_id }}">
+      {% endif %}
+      <span>{{ o.label }}</span>
+    </label>
+    {% endfor %}
+  </fieldset>
+  {% if q.kind == "multiple_choice" and q.required %}
+  <script>
+  (function() {
+    // A required multiple choice: at least one box. Native `required` on a
+    // checkbox would demand every box, so the first box carries the check.
+    var boxes = document.querySelectorAll('input[data-q-group="{{ q.html_id }}"]');
+    if (!boxes.length) return;
+    var msg = {{ t("book-question-pick-one") | tojson }};
+    function update() {
+      var any = Array.prototype.some.call(boxes, function(b) { return b.checked; });
+      boxes[0].setCustomValidity(any ? '' : msg);
+    }
+    Array.prototype.forEach.call(boxes, function(b) { b.addEventListener('change', update); });
+    update();
+  })();
+  </script>
+  {% endif %}
+  {% else %}
+  <div class="form-group">
+    <label class="q-choice q-consent" for="{{ q.html_id }}">
+      <input type="checkbox" id="{{ q.html_id }}" name="{{ q.name }}" value="1"{% if q.required %} required{% endif %}{% if q.help %} aria-describedby="{{ help_id }}"{% endif %}>
+      <span>{{ q.label }}{% if not q.required %} <span class="hint">{{ t("book-notes-optional") }}</span>{% endif %}</span>
+    </label>
+    {% if q.link_url %}<span class="q-help q-consent"><a href="{{ q.link_url }}" target="_blank" rel="noopener noreferrer">{{ t("book-question-read-policy") }}<span class="q-sr"> {{ t("book-question-new-tab") }}</span></a></span>{% endif %}
+    {% if q.help %}<span class="q-help" id="{{ help_id }}">{{ q.help }}</span>{% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
+  {% set notes_mode = notes_mode | default("optional") %}
+  {% if notes_mode != "off" %}
+  <div class="form-group">
+    <label for="notes">{{ t("book-notes-label") }}{% if notes_mode != "required" %} <span class="hint">{{ t("book-notes-optional") }}</span>{% endif %}</label>
+    <textarea id="notes" name="notes" maxlength="5000" placeholder="{{ t('book-notes-placeholder') }}"{% if notes_mode == "required" %} required{% endif %}>{{ form_notes }}</textarea>
+  </div>
+  {% endif %}
+
+  {% if max_additional_guests is defined and max_additional_guests > 0 %}
+  <div class="form-group">
+    <label>{{ t("book-additional-guests-label") }} <span class="hint">{{ t("book-additional-guests-hint", max=max_additional_guests) }}</span></label>
+    <div id="guest-list" style="display: flex; flex-direction: column; gap: 0.375rem;"></div>
+    <input type="hidden" name="additional_guests" id="additional-guests-hidden" value="">
+    <button type="button" id="add-guest-btn" style="margin-top: 0.375rem; background: none; border: 1px dashed var(--border); border-radius: var(--radius); padding: 0.5rem; cursor: pointer; color: var(--text-muted); font-size: 0.85rem; font-family: inherit; width: 100%; transition: all 0.15s ease;">{{ t("book-add-guest-btn") }}</button>
+  </div>
+  <script>
+  (function() {
+    var max = {{ max_additional_guests }};
+    var guestEmailPlaceholder = {{ t("book-guest-email-placeholder") | tojson }};
+    var list = document.getElementById('guest-list');
+    var hidden = document.getElementById('additional-guests-hidden');
+    var addBtn = document.getElementById('add-guest-btn');
+    var count = 0;
+
+    function syncHidden() {
+      var emails = [];
+      list.querySelectorAll('input[type="email"]').forEach(function(inp) {
+        var v = inp.value.trim();
+        if (v) emails.push(v);
+      });
+      hidden.value = emails.join(',');
+    }
+
+    function addRow() {
+      if (count >= max) return;
+      count++;
+      var row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 0.375rem; align-items: center;';
+      var inp = document.createElement('input');
+      inp.type = 'email';
+      inp.placeholder = guestEmailPlaceholder;
+      inp.maxLength = 255;
+      inp.style.cssText = 'flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; font-family: inherit; background: var(--surface); color: var(--text);';
+      inp.addEventListener('input', syncHidden);
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = '\u00d7';
+      removeBtn.style.cssText = 'background: none; border: none; color: var(--text-muted); font-size: 1.25rem; cursor: pointer; padding: 0 0.25rem; line-height: 1;';
+      removeBtn.addEventListener('click', function() {
+        row.remove();
+        count--;
+        addBtn.style.display = count < max ? '' : 'none';
+        syncHidden();
+      });
+      row.appendChild(inp);
+      row.appendChild(removeBtn);
+      list.appendChild(row);
+      inp.focus();
+      if (count >= max) addBtn.style.display = 'none';
+    }
+
+    addBtn.addEventListener('click', addRow);
+  })();
+  </script>
+  {% endif %}
+
+  {% if captcha_enabled %}
+  <div class="form-group">
+    <label>{{ t("captcha-label") }}</label>
+    {% if captcha_wasm_url %}<script>window.CAP_CUSTOM_WASM_URL = {{ captcha_wasm_url | tojson }};</script>{% endif %}
+    <script src="{{ captcha_widget_url }}"></script>
+    <cap-widget
+      data-cap-api-endpoint="{{ captcha_api_endpoint }}"
+      data-cap-i18n-initial-state="{{ t('captcha-initial-state') }}"
+      data-cap-i18n-verifying-label="{{ t('captcha-verifying') }}"
+      data-cap-i18n-solved-label="{{ t('captcha-solved') }}"
+      data-cap-i18n-error-label="{{ t('captcha-error') }}"
+      data-cap-i18n-troubleshooting-label="{{ t('captcha-troubleshooting') }}"
+      data-cap-i18n-wasm-disabled="{{ t('captcha-wasm-disabled') }}"
+      data-cap-i18n-verify-aria-label="{{ t('captcha-verify-aria') }}"
+      data-cap-i18n-verifying-aria-label="{{ t('captcha-verifying-aria') }}"
+      data-cap-i18n-verified-aria-label="{{ t('captcha-verified-aria') }}"
+      data-cap-i18n-required-label="{{ t('captcha-required') }}"
+      data-cap-i18n-error-aria-label="{{ t('captcha-error-aria') }}"
+    ></cap-widget>
+  </div>
+  {% endif %}
+
+  <button type="submit" class="btn">{{ t("book-confirm-button") }}</button>
+</form>

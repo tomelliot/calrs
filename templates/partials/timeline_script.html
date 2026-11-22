@@ -1,0 +1,724 @@
+{#- Fork: the week timeline and the booking dialog of the slot page.
+
+    `window.calrsTimeline(api)` is called once by the slot page script, which
+    passes the functions that read and move its state (`api` below). The week
+    view's `buildWeekView()` then calls `render()`.
+
+    Open time on a day is the union of [start, start + duration] of its
+    offered starts; the rest is hatched. A click (or Enter on a start) opens
+    the booking form of that start in a dialog: `…/book?…&partial=1` renders
+    the form alone, and it posts to the usual booking handler. In reschedule
+    mode, in an embed, or when the form cannot be fetched, the start's link is
+    followed instead. -#}
+<dialog class="tl-dlg" id="tl-dlg" aria-labelledby="tl-dlg-title">
+  <button type="button" class="tl-icon-btn tl-dlg-close" id="tl-dlg-close" aria-label="{{ t('tl-dialog-close') }}">
+    <svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <div class="tl-dlg-badge" aria-hidden="true">
+    <svg class="tl-icon" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+  </div>
+  <h2 class="tl-dlg-title" id="tl-dlg-title">{{ t("tl-dialog-title") }}</h2>
+  <div id="tl-dlg-body"></div>
+</dialog>
+<script>
+window.calrsTimeline = function(api) {
+  'use strict';
+  var T = {
+    hint: {{ t("tl-hint") | tojson }},
+    emptyWeek: {{ t("tl-empty-week") | tojson }},
+    emptyDay: {{ t("tl-empty-day") | tojson }},
+    loading: {{ t("slots-loading-availability") | tojson }},
+    gridLabel: {{ t("tl-grid-label") | tojson }},
+    slotLabel: {{ t("tl-slot-label") | tojson }},
+    prevWeek: {{ t("tl-prev-week") | tojson }},
+    nextWeek: {{ t("tl-next-week") | tojson }},
+    prevDay: {{ t("tl-prev-day") | tojson }},
+    nextDay: {{ t("tl-next-day") | tojson }},
+    dayOpen: {{ t("tl-mini-day-open") | tojson }},
+    dayNone: {{ t("tl-mini-day-none") | tojson }}
+  };
+  var EMBED = {{ embed | default(false) | tojson }};
+  var GUEST_TZ = {{ (guest_tz | default('')) | tojson }};
+  var calData = api.calData;
+  var I = calData.i18n || {};
+  var WEEKDAYS = I.weekdays || ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MONTHS = I.monthNames || ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var DUR = Math.max(5, +calData.durationMin || 30);
+  var todayDate = calData.todayDate;
+  var pageLang = calData.lang || document.documentElement.lang || undefined;
+
+  var root = document.documentElement;
+  var weekView = document.getElementById('week-view');
+  var outer = document.querySelector('.slots-outer');
+  var titleEl = document.getElementById('cal-header-title');
+  var navEl = document.getElementById('main-cal-nav');
+  var mini = document.getElementById('tl-mini');
+  var miniGrid = document.getElementById('tl-mini-grid');
+  var viewSelect = document.getElementById('tl-view-select');
+  if (!weekView) return null;
+
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function parse(ds) { var p = ds.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function ym(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1); }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function weekStartOf(d) { return addDays(d, -((d.getDay() - api.weekStartDay() + 7) % 7)); }
+  function toMin(hhmm) { return +hhmm.slice(0, 2) * 60 + +hhmm.slice(3, 5); }
+  function hhmm(min) { return pad(Math.floor(min / 60) % 24) + ':' + pad(min % 60); }
+  function sub(s, a, b, c) { return String(s).replace('%1', a).replace('%2', b === undefined ? '' : b).replace('%3', c === undefined ? '' : c); }
+  function longDate(d) {
+    try { return new Intl.DateTimeFormat(pageLang, { dateStyle: 'full' }).format(d); }
+    catch (e) { return iso(d); }
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // Earliest and latest bookable days: today or the start of the bookable
+  // range; the end of the range when there is one.
+  function earliest() {
+    var e = todayDate;
+    if (calData.firstBookableDate && calData.firstBookableDate > e) e = calData.firstBookableDate;
+    return e;
+  }
+  function lastDate() { return calData.lastBookableDate || ''; }
+  // A month the slot page may load: up to the loaded one, or the next when
+  // the server says it exists.
+  function monthAllowed(m) {
+    var st = api.state();
+    if (m <= st.monthYear) return m >= earliest().slice(0, 7);
+    return !!calData.hasNextMonth && calData.nextMonth === m;
+  }
+
+  /* ---------- Days ---------- */
+  var cache = { data: null, days: {} };
+  function dayInfo(ds) {
+    var st = api.state();
+    if (cache.data !== st.slotData) { cache = { data: st.slotData, days: {} }; }
+    if (cache.days[ds]) return cache.days[ds];
+    var list = ds >= todayDate ? (st.slotData[ds] || []) : [];
+    var byMin = {};
+    var starts = list.map(function(s) { var m = toMin(s.start); byMin[m] = s; return m; })
+      .sort(function(a, b) { return a - b; });
+    var regions = [];
+    starts.forEach(function(s) {
+      var last = regions[regions.length - 1];
+      if (last && s <= last[1]) last[1] = Math.max(last[1], s + DUR);
+      else regions.push([s, s + DUR]);
+    });
+    return (cache.days[ds] = { starts: starts, regions: regions, byMin: byMin });
+  }
+  // The latest offered start at or before minute t whose meeting covers t.
+  function startAt(ds, t) {
+    var st = dayInfo(ds).starts, best = null;
+    for (var i = 0; i < st.length; i++) if (st[i] <= t && t < st[i] + DUR) best = st[i];
+    return best;
+  }
+
+  /* ---------- State ---------- */
+  var mq = window.matchMedia('(max-width: 900px)');
+  var state = { narrow: mq.matches, day: null, selected: null, shownKey: '', miniMonth: '', hintGone: false };
+  var loadedMonths = {}, loadedFor = null;
+  function noteLoaded() {
+    var st = api.state();
+    if (loadedFor !== st.slotData) { loadedMonths = {}; loadedFor = st.slotData; }
+    loadedMonths[st.monthYear] = true;
+  }
+
+  function is12() { return api.formatTime('13:00') !== '13:00'; }
+  function fmtTime(min) { return api.formatTime(hhmm(min)); }
+  function fmtAxis(h) {
+    if (!is12()) return pad(h) + ':00';
+    return api.formatTime(pad(h) + ':00').replace(':00', '');
+  }
+  function zoneLabel(d) {
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: GUEST_TZ || undefined, timeZoneName: 'shortOffset' })
+        .formatToParts(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12));
+      for (var i = 0; i < parts.length; i++) if (parts[i].type === 'timeZoneName') return parts[i].value;
+    } catch (e) {}
+    return '';
+  }
+
+  // The first day of the shown week, anchored on the first day with times
+  // in the loaded month when the page has not chosen one.
+  function weekStart() {
+    var st = api.state();
+    if (!st.weekStart) {
+      var first = null, from = earliest();
+      Object.keys(st.slotData).forEach(function(ds) {
+        if (ds < from || ds.slice(0, 7) !== st.monthYear || !dayInfo(ds).starts.length) return;
+        if (!first || ds < first) first = ds;
+      });
+      if (first) api.setWeekStart(weekStartOf(parse(first)));
+      state.day = first ? parse(first) : null;
+    }
+    return api.weekStart();
+  }
+  function visibleDates() {
+    var ws = weekStart();
+    var out = [];
+    for (var i = 0; i < 7; i++) out.push(addDays(ws, i));
+    if (!state.narrow) return out;
+    var day = state.day && iso(weekStartOf(state.day)) === iso(ws) ? state.day : null;
+    if (!day) {
+      // The first day of the week with times, else the first bookable one.
+      var from = earliest();
+      day = out.filter(function(d) { return iso(d) >= from && dayInfo(iso(d)).starts.length; })[0] ||
+        out.filter(function(d) { return iso(d) >= from; })[0] || out[0];
+      state.day = day;
+    }
+    return [day];
+  }
+
+  /* ---------- Skeleton ---------- */
+  var tl, tlDays, tlCols, tlAxis, tlScroll, tlTz, hint, tlEmpty;
+  function skeleton() {
+    if (tl && weekView.contains(tl)) return;
+    weekView.innerHTML = '';
+    tl = el('div', 'tl');
+    var head = el('div', 'tl-head');
+    var gutter = el('div', 'tl-gutter');
+    tlTz = el('span', 'tl-tz');
+    gutter.appendChild(tlTz);
+    tlDays = el('div', 'tl-days');
+    head.appendChild(gutter);
+    head.appendChild(tlDays);
+    tlScroll = el('div', 'tl-scroll');
+    var body = el('div', 'tl-body');
+    body.setAttribute('role', 'group');
+    body.setAttribute('aria-label', T.gridLabel);
+    tlAxis = el('div', 'tl-axis');
+    tlAxis.setAttribute('aria-hidden', 'true');
+    tlCols = el('div', 'tl-cols');
+    body.appendChild(tlAxis);
+    body.appendChild(tlCols);
+    tlScroll.appendChild(body);
+    hint = el('div', 'tl-hint' + (state.hintGone ? ' is-gone' : ''));
+    hint.setAttribute('aria-hidden', 'true');
+    hint.innerHTML = '<span class="tl-hint-dot"><svg class="tl-icon" viewBox="0 0 24 24"><path d="M9 9l10 4-4 1.5L13.5 19z"/><path d="M5 3.5v2.5M2.5 6H5M3.6 3.6l1.8 1.8M8.5 3.6L7 5.1M3.6 8.5L5.1 7"/></svg></span>';
+    hint.appendChild(document.createTextNode(T.hint));
+    tlEmpty = el('p', 'tl-empty');
+    tlEmpty.hidden = true;
+    tl.appendChild(head);
+    tl.appendChild(tlScroll);
+    tl.appendChild(hint);
+    tl.appendChild(tlEmpty);
+    if (!api.canBook) tl.classList.add('is-view-only');
+    weekView.appendChild(tl);
+    wireGrid();
+    state.shownKey = '';
+  }
+  function hideHint() { state.hintGone = true; if (hint) hint.classList.add('is-gone'); }
+
+  /* ---------- Rendering ---------- */
+  var HOUR_PX = 64;
+  function pxPerMin() { return HOUR_PX / 60; }
+
+  function renderAxis() {
+    tlAxis.innerHTML = '';
+    for (var h = 1; h < 24; h++) {
+      var s = el('span', '', fmtAxis(h));
+      s.style.top = (h * HOUR_PX) + 'px';
+      tlAxis.appendChild(s);
+    }
+  }
+
+  function block(cls, min, text) {
+    var b = el('div', 'tl-block ' + cls, text);
+    b.style.top = (min * pxPerMin()) + 'px';
+    var h = Math.min(DUR, 1440 - min) * pxPerMin();
+    b.style.height = h + 'px';
+    if (h < 26) b.classList.add('is-short');
+    return b;
+  }
+
+  function renderGrid() {
+    var dates = visibleDates();
+    var pending = !!document.getElementById('deferred-loader');
+    tl.style.setProperty('--tl-n', dates.length);
+    tlDays.innerHTML = '';
+    tlCols.innerHTML = '';
+    var any = false, firstSlot = null, keepSlot = null, earliestMin = null;
+
+    dates.forEach(function(d) {
+      var ds = iso(d);
+      var head = el('div', 'tl-dayname' + (ds === todayDate ? ' is-today' : ''));
+      head.appendChild(document.createTextNode(WEEKDAYS[d.getDay()] + ' '));
+      head.appendChild(el('b', '', String(d.getDate())));
+      tlDays.appendChild(head);
+
+      var col = el('div', 'tl-day');
+      col.setAttribute('data-date', ds);
+      var info = dayInfo(ds);
+      info.regions.forEach(function(r) {
+        var o = el('div', 'tl-open');
+        o.style.top = (r[0] * pxPerMin()) + 'px';
+        o.style.height = ((Math.min(r[1], 1440) - r[0]) * pxPerMin()) + 'px';
+        col.appendChild(o);
+      });
+      info.starts.forEach(function(s) {
+        any = true;
+        if (earliestMin === null || s < earliestMin) earliestMin = s;
+        var a = el('a', 'tl-slot', fmtTime(s));
+        a.href = api.slotHref(info.byMin[s]);
+        a.tabIndex = -1;
+        a.style.top = (s * pxPerMin()) + 'px';
+        var h = Math.min(DUR, 1440 - s) * pxPerMin();
+        a.style.height = h + 'px';
+        if (h < 26) a.classList.add('is-short');
+        a.setAttribute('data-min', s);
+        a.setAttribute('aria-label', sub(T.slotLabel, longDate(d), fmtTime(s), fmtTime(s + DUR)));
+        if (!api.canBook) { a.setAttribute('aria-disabled', 'true'); a.title = api.inviteTitle; }
+        col.appendChild(a);
+        if (!firstSlot) firstSlot = a;
+        if (state.selected && state.selected.ds === ds && state.selected.min === s) keepSlot = a;
+      });
+      var pv = block('tl-preview', 0, '');
+      pv.hidden = true;
+      col.appendChild(pv);
+      if (state.selected && state.selected.ds === ds) col.appendChild(block('tl-selected', state.selected.min, fmtTime(state.selected.min)));
+      col.appendChild(el('div', 'tl-lines'));
+      tlCols.appendChild(col);
+    });
+
+    var roving = keepSlot || firstSlot;
+    if (roving) roving.tabIndex = 0;
+    tlEmpty.textContent = pending ? T.loading : (state.narrow ? T.emptyDay : T.emptyWeek);
+    tlEmpty.hidden = any;
+    tlTz.textContent = zoneLabel(dates[0]);
+
+    // On a new week (or day), scroll to an hour before its first start.
+    var key = iso(dates[0]) + '/' + dates.length;
+    if (key !== state.shownKey) {
+      state.shownKey = key;
+      var top = earliestMin === null ? 7 * 60 : Math.max(0, earliestMin - 60);
+      tlScroll.scrollTop = Math.max(0, top * pxPerMin() - 12);
+    }
+  }
+
+  function renderOffsetNote(dates) {
+    var old = weekView.querySelector('.slot-offset-note');
+    if (old) old.remove();
+    var text = api.offsetNote(dates.map(iso).filter(function(ds) { return dayInfo(ds).starts.length; }));
+    if (!text) return;
+    var note = el('div', 'slot-offset-note', text);
+    weekView.insertBefore(note, tl);
+  }
+
+  function monthTitle(dates) {
+    var a = dates[0], b = dates[dates.length - 1];
+    if (a.getMonth() === b.getMonth()) return MONTHS[a.getMonth()] + ' ' + a.getFullYear();
+    if (a.getFullYear() === b.getFullYear()) return MONTHS[a.getMonth()] + ' – ' + MONTHS[b.getMonth()] + ' ' + b.getFullYear();
+    return MONTHS[a.getMonth()] + ' ' + a.getFullYear() + ' – ' + MONTHS[b.getMonth()] + ' ' + b.getFullYear();
+  }
+
+  function navButton(label, dir, enabled, onClick) {
+    var b = el('button', '');
+    b.type = 'button';
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.innerHTML = dir < 0
+      ? '<svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>'
+      : '<svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+    b.disabled = !enabled;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // Shows the week (or day) holding `d`, loading its month first.
+  function go(d) {
+    api.setWeekStart(weekStartOf(d));
+    state.day = d;
+    api.ensureMonthLoaded(state.narrow ? d : weekStartOf(d), render);
+  }
+
+  function renderHeader(dates) {
+    if (titleEl) titleEl.textContent = monthTitle(dates);
+    if (!navEl) return;
+    var focused = navEl.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') : null;
+    navEl.innerHTML = '';
+    var first = dates[0], last = dates[dates.length - 1];
+    var step = state.narrow ? 1 : 7;
+    var prevDay = addDays(first, -1), next = addDays(last, 1);
+    var prevOk = iso(prevDay) >= earliest();
+    var nextOk = monthAllowed(ym(next)) && (!lastDate() || iso(next) <= lastDate());
+    navEl.appendChild(navButton(state.narrow ? T.prevDay : T.prevWeek, -1, prevOk, function() {
+      go(addDays(first, -step));
+    }));
+    navEl.appendChild(navButton(state.narrow ? T.nextDay : T.nextWeek, 1, nextOk, function() {
+      go(addDays(first, step));
+    }));
+    if (focused) {
+      var again = navEl.querySelector('[aria-label="' + focused + '"]');
+      if (again && !again.disabled) again.focus();
+    }
+  }
+
+  /* ---------- Mini calendar ---------- */
+  // The month shown stays while the timeline shows one of its days, or
+  // while `keep` (the guest moved it with its own arrows).
+  function renderMini(dates, keep) {
+    if (!mini) return;
+    var shown = {};
+    dates.forEach(function(d) { shown[iso(d)] = true; });
+    if (!state.miniMonth || (!keep && !dates.some(function(d) { return ym(d) === state.miniMonth; }))) state.miniMonth = ym(dates[0]);
+    var p = state.miniMonth.split('-');
+    var first = new Date(+p[0], +p[1] - 1, 1);
+    $('tl-mini-title').textContent = MONTHS[first.getMonth()] + ' ' + first.getFullYear();
+    var from = earliest(), until = lastDate();
+    var known = !!loadedMonths[state.miniMonth];
+
+    miniGrid.innerHTML = '';
+    var hr = el('div', 'tl-mini-row');
+    hr.setAttribute('role', 'row');
+    for (var i = 0; i < 7; i++) {
+      var h = el('div', 'tl-mini-dow', WEEKDAYS[(api.weekStartDay() + i) % 7]);
+      h.setAttribute('role', 'columnheader');
+      hr.appendChild(h);
+    }
+    miniGrid.appendChild(hr);
+
+    var d = weekStartOf(first);
+    while (d.getMonth() === first.getMonth() || d < first) {
+      var row = el('div', 'tl-mini-row');
+      row.setAttribute('role', 'row');
+      var cells = [];
+      for (var j = 0; j < 7; j++, d = addDays(d, 1)) {
+        var ds = iso(d);
+        var other = d.getMonth() !== first.getMonth();
+        var open = ds >= from && dayInfo(ds).starts.length > 0;
+        var cell = el('div', 'tl-mini-cell');
+        cell.setAttribute('role', 'gridcell');
+        var btn = el('button', 'tl-mini-day' + (other ? ' is-other' : '') +
+          (open ? ' is-open' : (known || ds < from ? ' is-none' : '')) + (ds === todayDate ? ' is-today' : ''), String(d.getDate()));
+        btn.type = 'button';
+        btn.setAttribute('data-date', ds);
+        btn.setAttribute('aria-label', sub(open ? T.dayOpen : T.dayNone, longDate(d)));
+        if (ds === todayDate) btn.setAttribute('aria-current', 'date');
+        if (other) { btn.tabIndex = -1; btn.setAttribute('aria-hidden', 'true'); }
+        if (ds < from || (until && ds > until)) btn.disabled = true;
+        if (shown[ds] && !other) cell.classList.add('in-week');
+        cell.appendChild(btn);
+        row.appendChild(cell);
+        cells.push(cell);
+      }
+      var inWeek = cells.filter(function(c) { return c.classList.contains('in-week'); });
+      if (inWeek.length) {
+        inWeek[0].classList.add('wk-first');
+        inWeek[inWeek.length - 1].classList.add('wk-last');
+      }
+      miniGrid.appendChild(row);
+    }
+    var prevM = ym(new Date(first.getFullYear(), first.getMonth() - 1, 1));
+    var nextM = ym(new Date(first.getFullYear(), first.getMonth() + 1, 1));
+    $('tl-mini-prev').disabled = prevM < from.slice(0, 7);
+    $('tl-mini-next').disabled = !(loadedMonths[nextM] || monthAllowed(nextM)) || (until && nextM > until.slice(0, 7));
+  }
+
+  function shiftMini(n) {
+    var p = state.miniMonth.split('-');
+    var m = new Date(+p[0], +p[1] - 1 + n, 1);
+    state.miniMonth = ym(m);
+    if (loadedMonths[state.miniMonth]) { renderMini(visibleDates(), true); return; }
+    // Load the month so its days show whether they have times.
+    api.ensureMonthLoaded(m, function() { noteLoaded(); render(true); });
+  }
+  if (mini) {
+    $('tl-mini-prev').addEventListener('click', function() { shiftMini(-1); });
+    $('tl-mini-next').addEventListener('click', function() { shiftMini(1); });
+    miniGrid.addEventListener('click', function(e) {
+      var btn = e.target.closest('.tl-mini-day');
+      if (!btn || btn.disabled) return;
+      go(parse(btn.getAttribute('data-date')));
+    });
+  }
+
+  /* ---------- Render ---------- */
+  // keepMini: the mini calendar stays on the month the guest moved it to.
+  function render(keepMini) {
+    if (api.state().view !== 'week') return;
+    // A loaded month is merged into the same slot data: read every day again.
+    cache = { data: null, days: {} };
+    noteLoaded();
+    skeleton();
+    clearPreview();
+    var dates = visibleDates();
+    renderAxis();
+    renderGrid();
+    renderOffsetNote(dates);
+    renderHeader(dates);
+    renderMini(dates, keepMini === true);
+  }
+
+  /* ---------- Pointer and keyboard ---------- */
+  var previewCol = null;
+  function clearPreview() {
+    if (!previewCol) return;
+    var pv = previewCol.querySelector('.tl-preview');
+    if (pv) pv.hidden = true;
+    previewCol.classList.remove('has-preview');
+    previewCol = null;
+  }
+  function pointerStart(e) {
+    var col = e.target.closest ? e.target.closest('.tl-day') : null;
+    if (!col) return null;
+    var t = (e.clientY - col.getBoundingClientRect().top) / pxPerMin();
+    var ds = col.getAttribute('data-date');
+    var s = startAt(ds, t);
+    return s === null ? { col: col } : { col: col, ds: ds, min: s };
+  }
+  function slotEl(ds, min) {
+    var col = tlCols.querySelector('.tl-day[data-date="' + ds + '"]');
+    return col && col.querySelector('.tl-slot[data-min="' + min + '"]');
+  }
+  function focusSlot(from, to) {
+    if (!to) return;
+    if (from) from.tabIndex = -1;
+    to.tabIndex = 0;
+    to.focus();
+    hideHint();
+  }
+  function wireGrid() {
+    tlCols.addEventListener('mousemove', function(e) {
+      var p = pointerStart(e);
+      if (!p || p.min === undefined) { clearPreview(); return; }
+      if (previewCol !== p.col) clearPreview();
+      var pv = p.col.querySelector('.tl-preview');
+      pv.style.top = (p.min * pxPerMin()) + 'px';
+      pv.textContent = fmtTime(p.min);
+      pv.hidden = false;
+      p.col.classList.add('has-preview');
+      previewCol = p.col;
+      hideHint();
+    });
+    tlCols.addEventListener('mouseleave', clearPreview);
+    tlCols.addEventListener('focusin', hideHint);
+    tlCols.addEventListener('click', function(e) {
+      var a = e.target.closest('.tl-slot');
+      if (a) {
+        e.preventDefault();
+        choose(a.parentNode.getAttribute('data-date'), +a.getAttribute('data-min'));
+        return;
+      }
+      var p = pointerStart(e);
+      if (p && p.min !== undefined) choose(p.ds, p.min);
+    });
+    tlCols.addEventListener('keydown', function(e) {
+      var slot = e.target.closest('.tl-slot');
+      if (!slot) return;
+      var col = slot.parentNode;
+      var list = Array.prototype.slice.call(col.querySelectorAll('.tl-slot'));
+      var i = list.indexOf(slot), to = null;
+      switch (e.key) {
+        case 'ArrowUp': to = list[i - 1]; break;
+        case 'ArrowDown': to = list[i + 1]; break;
+        case 'Home': to = list[0]; break;
+        case 'End': to = list[list.length - 1]; break;
+        case ' ': e.preventDefault(); slot.click(); return;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+          var cols = Array.prototype.slice.call(tlCols.querySelectorAll('.tl-day'));
+          var step = e.key === 'ArrowLeft' ? -1 : 1;
+          var min = +slot.getAttribute('data-min');
+          for (var c = cols.indexOf(col) + step; c >= 0 && c < cols.length; c += step) {
+            var cand = cols[c].querySelectorAll('.tl-slot');
+            if (!cand.length) continue;
+            to = cand[0];
+            for (var k = 0; k < cand.length; k++) {
+              if (Math.abs(+cand[k].getAttribute('data-min') - min) < Math.abs(+to.getAttribute('data-min') - min)) to = cand[k];
+            }
+            break;
+          }
+          break;
+        default: return;
+      }
+      e.preventDefault();
+      focusSlot(slot, to);
+    });
+  }
+
+  /* ---------- Booking dialog ---------- */
+  var dlg = $('tl-dlg'), dlgBody = $('tl-dlg-body');
+  var returnFocus = null, loadedScripts = {}, dlgSeq = 0;
+  var canDialog = !!(dlg && dlg.showModal) && !EMBED && !api.reschedule && window.fetch;
+
+  function choose(ds, min) {
+    if (!api.canBook) return;
+    var s = dayInfo(ds).byMin[min];
+    if (!s) return;
+    var href = api.slotHref(s);
+    if (!canDialog) { window.location.href = href; return; }
+    openDialog(ds, min, href);
+  }
+
+  function placeDialog() {
+    if (state.narrow || !tl) { dlg.classList.remove('is-placed'); dlg.style.left = dlg.style.top = ''; return; }
+    var r = tl.getBoundingClientRect();
+    dlg.classList.add('is-placed');
+    var w = dlg.offsetWidth, h = dlg.offsetHeight;
+    var left = r.left + (r.width - w) / 2;
+    var top = Math.max(16, Math.min(r.top + Math.max(16, (r.height - h) / 2), window.innerHeight - h - 16));
+    dlg.style.left = Math.max(16, left) + 'px';
+    dlg.style.top = top + 'px';
+  }
+  window.addEventListener('resize', function() { if (dlg && dlg.open) placeDialog(); });
+
+  // Runs the fragment's scripts in order, as innerHTML does not. A script
+  // file loaded by an earlier dialog is not loaded again.
+  function runScripts(container, done) {
+    var list = Array.prototype.slice.call(container.querySelectorAll('script'));
+    (function next(i) {
+      if (i >= list.length) { done(); return; }
+      var old = list[i];
+      var src = old.getAttribute('src');
+      if (src && loadedScripts[src]) { old.remove(); next(i + 1); return; }
+      var s = document.createElement('script');
+      for (var k = 0; k < old.attributes.length; k++) s.setAttribute(old.attributes[k].name, old.attributes[k].value);
+      if (src) {
+        s.onload = s.onerror = function() { loadedScripts[src] = true; next(i + 1); };
+        old.parentNode.replaceChild(s, old);
+      } else {
+        s.text = old.textContent;
+        old.parentNode.replaceChild(s, old);
+        next(i + 1);
+      }
+    })(0);
+  }
+
+  function openDialog(ds, min, href) {
+    var seq = ++dlgSeq;
+    state.selected = { ds: ds, min: min };
+    returnFocus = slotEl(ds, min);
+    hideHint();
+    clearPreview();
+    renderGrid();
+    dlgBody.innerHTML = '<div class="tl-dlg-loading"><span></span></div>';
+    dlg.showModal();
+    placeDialog();
+    var url = href + (href.indexOf('?') === -1 ? '?' : '&') + 'partial=1';
+    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } }).then(function(r) {
+      if (!r.ok) throw new Error('status ' + r.status);
+      return r.text();
+    }).then(function(html) {
+      if (seq !== dlgSeq || !dlg.open) return;
+      var tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      if (!tmp.querySelector('[data-booking-form] form')) throw new Error('no form');
+      dlgBody.innerHTML = '';
+      while (tmp.firstChild) dlgBody.appendChild(tmp.firstChild);
+      dlgBody.querySelectorAll('.book-time').forEach(function(t) { t.textContent = api.formatTime(t.getAttribute('data-time')); });
+      var when = dlgBody.querySelector('.dlg-time');
+      var zone = zoneLabel(parse(ds));
+      if (when && zone) when.appendChild(document.createTextNode(' (' + zone + ')'));
+      runScripts(dlgBody, function() {
+        placeDialog();
+        var fields = Array.prototype.slice.call(dlgBody.querySelectorAll('input:not([type="hidden"]), textarea, select'));
+        var empty = fields.filter(function(f) { return !f.value; })[0];
+        (empty || fields[0] || dlg).focus();
+      });
+    }).catch(function() {
+      // The form could not be shown here: open its page instead.
+      if (seq === dlgSeq) window.location.href = href;
+    });
+  }
+
+  if (dlg) {
+    $('tl-dlg-close').addEventListener('click', function() { dlg.close(); });
+    dlg.addEventListener('click', function(e) {
+      if (e.target !== dlg) return;
+      var r = dlg.getBoundingClientRect();
+      var inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) dlg.close();
+    });
+    dlg.addEventListener('close', function() {
+      dlgSeq++;
+      var sel = state.selected;
+      state.selected = null;
+      dlgBody.innerHTML = '';
+      if (api.state().view === 'week' && tl) renderGrid();
+      if (returnFocus && sel) {
+        var slot = slotEl(sel.ds, sel.min);
+        if (slot) focusSlot(tlCols.querySelector('.tl-slot[tabindex="0"]'), slot);
+      }
+      returnFocus = null;
+    });
+  }
+
+  /* ---------- Header controls ---------- */
+  var todayBtn = $('tl-today');
+  if (todayBtn) todayBtn.addEventListener('click', function() {
+    var target = parse(earliest());
+    if (api.state().view === 'week') { go(target); return; }
+    api.navigateMonth(target.getFullYear(), target.getMonth() + 1);
+  });
+
+  if (viewSelect) viewSelect.addEventListener('change', function() { api.switchView(viewSelect.value); });
+
+  // The 12h/24h toggle re-renders the timeline's times.
+  var fmtToggle = $('time-format-toggle');
+  if (fmtToggle) fmtToggle.addEventListener('click', function(e) {
+    if (e.target.closest('button') && api.state().view === 'week') { renderAxis(); renderGrid(); }
+  });
+
+  var langBtn = $('tl-lang-btn'), langMenu = $('tl-lang-menu');
+  function langItems() { return Array.prototype.slice.call(langMenu.querySelectorAll('button')); }
+  function closeLang(refocus) {
+    if (langMenu.hidden) return;
+    langMenu.hidden = true;
+    langBtn.setAttribute('aria-expanded', 'false');
+    if (refocus) langBtn.focus();
+  }
+  if (langBtn && langMenu) {
+    langBtn.addEventListener('click', function() {
+      if (!langMenu.hidden) { closeLang(false); return; }
+      langMenu.hidden = false;
+      langBtn.setAttribute('aria-expanded', 'true');
+      (langMenu.querySelector('[aria-checked="true"]') || langItems()[0]).focus();
+    });
+    langMenu.addEventListener('click', function(e) {
+      var item = e.target.closest('button');
+      if (!item) return;
+      document.cookie = 'calrs_lang=' + encodeURIComponent(item.getAttribute('data-lang')) + '; Path=/; Max-Age=31536000; SameSite=Lax';
+      if (typeof calrsLoader !== 'undefined') calrsLoader.show();
+      window.location.reload();
+    });
+    langMenu.addEventListener('keydown', function(e) {
+      var items = langItems(), i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeLang(true); }
+      else if (e.key === 'Tab') closeLang(false);
+    });
+    document.addEventListener('click', function(e) { if (!e.target.closest('.tl-lang')) closeLang(false); });
+  }
+
+  // The theme switch sits with the header's other controls.
+  // base.html adds it after this script runs.
+  document.addEventListener('DOMContentLoaded', function() {
+    var themeBtn = $('theme-toggle'), barEnd = document.querySelector('.tl-bar-end');
+    if (themeBtn && barEnd && !EMBED) barEnd.appendChild(themeBtn);
+  });
+
+  function onMq() {
+    state.narrow = mq.matches;
+    state.shownKey = '';
+    if (api.state().view === 'week') render();
+    if (dlg && dlg.open) placeDialog();
+  }
+  if (mq.addEventListener) mq.addEventListener('change', onMq); else if (mq.addListener) mq.addListener(onMq);
+
+  return {
+    render: render,
+    viewChanged: function(view) {
+      if (viewSelect) viewSelect.value = view;
+      if (mini) mini.hidden = view !== 'week';
+      if (outer) outer.classList.toggle('tl-view-week', view === 'week');
+    }
+  };
+};
+</script>

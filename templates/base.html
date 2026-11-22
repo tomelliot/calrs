@@ -566,7 +566,8 @@
   {% endif %}
   <div class="container">
     {% block content %}{% endblock %}
-    {% block footer %}{% if _site %}<div class="powered site-foot"><span>{{ _site.title }} · <a href="{{ _site.source_url }}">{{ t('site-source-link') }}</a></span></div>{% else %}<div class="powered"><span>{{ t('base-powered-by') }} <a href="https://cal.rs">calrs</a> <img src="/brand-logo" alt="" width="17" height="14" style="vertical-align: -2px; margin-left: 0.15rem;"></span></div>{% endif %}{% endblock %}
+    {#- Fork: the footer is a partial, so the slot page can place it in its own footer row. #}
+    {% block footer %}{% include "partials/site_footer.html" %}{% endblock %}
     {% block theme_toggle %}
     <button id="theme-toggle" type="button" title="{{ t('base-theme-toggle') }}" aria-label="{{ t('base-theme-toggle') }}" class="theme-pill">
       <span class="theme-pill-track">

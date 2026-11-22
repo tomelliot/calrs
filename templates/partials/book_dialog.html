@@ -1,0 +1,22 @@
+{#- Fork: the booking form alone, for the slot page dialog
+    (`GET …/book?partial=1`). Same context as book.html. The form posts to the
+    usual booking handler, which answers with a full page. -#}
+{% if team_token is defined and team_token %}
+  {% set base = "/t/" ~ team_token %}
+{% elif team_slug is defined and team_slug %}
+  {% set base = "/team/" ~ team_slug ~ "/" ~ event_type.slug %}
+{% elif username is defined and username %}
+  {% set base = "/u/" ~ username ~ "/" ~ event_type.slug %}
+{% else %}
+  {% set base = "/" ~ event_type.slug %}
+{% endif %}
+<div class="tl-dlg-fragment" data-booking-form>
+  <div class="dlg-when">
+    <svg class="tl-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+    <div>
+      <div class="dlg-date">{{ date_label }}</div>
+      <div class="dlg-time"><span class="book-time" data-time="{{ time_start }}">{{ time_start }}</span> – <span class="book-time" data-time="{{ time_end }}">{{ time_end }}</span></div>
+    </div>
+  </div>
+  {% include "partials/book_form.html" %}
+</div>

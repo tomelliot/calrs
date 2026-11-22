@@ -48,6 +48,8 @@ mod sites;
 mod sms_spend;
 mod sources;
 mod time_off;
+// Fork: the week timeline and booking dialog.
+mod timeline;
 mod webhooks;
 mod write_destinations;
 mod writeback_failures;

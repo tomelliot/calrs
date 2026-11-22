@@ -838,7 +838,8 @@ pub(super) async fn show_group_book_form(
     let booking_form = questions::booking_form(&state.pool, &et_id)
         .await
         .unwrap_or_default();
-    let tmpl = match state.templates.get_template("book.html") {
+    // Fork: `partial=1` renders the form alone, for the slot page dialog.
+    let tmpl = match state.templates.get_template(timeline::book_template()) {
         Ok(t) => t,
         Err(e) => return internal_error_html("internal", &e).into_response(),
     };
@@ -1395,7 +1396,8 @@ async fn show_dynamic_group_book_form(
     let booking_form = questions::booking_form(&state.pool, &et_id)
         .await
         .unwrap_or_default();
-    let tmpl = match state.templates.get_template("book.html") {
+    // Fork: `partial=1` renders the form alone, for the slot page dialog.
+    let tmpl = match state.templates.get_template(timeline::book_template()) {
         Ok(t) => t,
         Err(e) => return internal_error_html("internal", &e),
     };
@@ -1940,7 +1942,8 @@ pub(super) async fn show_book_form_for_user(
     let booking_form = questions::booking_form(&state.pool, &et_id)
         .await
         .unwrap_or_default();
-    let tmpl = match state.templates.get_template("book.html") {
+    // Fork: `partial=1` renders the form alone, for the slot page dialog.
+    let tmpl = match state.templates.get_template(timeline::book_template()) {
         Ok(t) => t,
         Err(e) => return internal_error_html("internal", &e).into_response(),
     };
@@ -2526,7 +2529,8 @@ pub(super) async fn show_book_form(
     let booking_form = questions::booking_form(&state.pool, &et_id)
         .await
         .unwrap_or_default();
-    let tmpl = match state.templates.get_template("book.html") {
+    // Fork: `partial=1` renders the form alone, for the slot page dialog.
+    let tmpl = match state.templates.get_template(timeline::book_template()) {
         Ok(t) => t,
         Err(e) => return internal_error_html("internal", &e),
     };

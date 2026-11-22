@@ -13,7 +13,12 @@ This fork of [olivierlambert/calrs](https://github.com/olivierlambert/calrs) ser
 | `/` on a site host lists the types ticked for the site | `root_redirect` in `src/web/dashboard.rs`, filter in `user_profile` (`src/web/public_pages.rs`) |
 | Booking stores its site (`bookings.site_host`); guest emails use the site's From, Reply-To, links and ICS organizer | migration `*_fork_booking_site_host.sql`, `record_booking` in `src/web/booking.rs`, `Sender::Host.uid` in `src/email/transport.rs`, `site_rewrite` in `src/email/guest.rs` and `render.rs` |
 | `site-source-link`, `etf-booking-sites`, `etf-booking-sites-hint` strings | `i18n/*/main.ftl` |
-| Tests | `src/web/sites.rs`, `src/web/tests/sites.rs` |
+| Slot page: week timeline (open time = union of each start plus the duration, hover snaps to a start, keyboard access), sidebar month calendar, header with Today, arrows, view select and language menu, footer row with the timezone. Week is the default view (new types; migration moves `month` types to `week`). Below 900px the timeline shows one day | `src/web/timeline.rs` (new), migration `*_fork_default_week_view.sql`, `templates/partials/timeline_style.html` and `timeline_script.html` (new), hooks in `templates/slots.html`, `src/web/event_types.rs`, `templates/event_type_form.html`, `src/commands/event_type.rs` |
+| Booking dialog: a start opens its booking form in a `<dialog>`; `GET …/book?partial=1` renders the form alone (`partials/book_dialog.html`) with its CSRF field, and it posts to the usual handler. Reschedule mode and embeds keep the page link. Slot pages get the booking form CSP (captcha) | `templates/partials/book_form.html` (form moved out of `book.html`), `timeline::book_template` in `src/web/public_pages.rs`, `timeline_middleware` and `csp_middleware` in `src/web/mod.rs` |
+| Language menu: a `calrs_lang` cookie stands in for `Accept-Language` | `timeline_middleware` |
+| Site footer as a partial, so the slot page places it in its footer row | `templates/partials/site_footer.html`, `templates/base.html` |
+| `tl-*` and `etf-view-month-short` strings | `i18n/*/main.ftl` |
+| Tests | `src/web/sites.rs`, `src/web/tests/sites.rs`, `src/web/timeline.rs`, `src/web/tests/timeline.rs` |
 
 Every hook in an upstream file carries a `Fork:` comment: `git grep -n "Fork:"` lists them.
 

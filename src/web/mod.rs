@@ -31,8 +31,10 @@ pub(crate) mod questions;
 // Fork: booking sites (sites.toml, skins).
 pub(crate) mod sites;
 mod sources;
+// Fork: the booking page's week timeline and booking dialog.
 mod teams;
 mod time_off;
+pub(crate) mod timeline;
 mod webhook_pages;
 pub(crate) mod webhooks;
 mod week_start;
@@ -885,7 +887,9 @@ async fn csp_middleware(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let booking_page = is_booking_form_path(request.uri().path());
+    // Fork: slot pages show the booking form in a dialog, captcha included.
+    let booking_page =
+        is_booking_form_path(request.uri().path()) || is_embeddable_path(request.uri().path());
     let embed_mode = is_embedded_booking_request(request.uri().path(), request.uri().query());
     let mut response = next.run(request).await;
     if !response
@@ -927,6 +931,8 @@ pub async fn create_router(
     crate::i18n::register(&mut env);
     register_company_logo(&mut env, data_dir.clone());
     sites::register(&mut env);
+    // Fork: the booking dialog's CSRF token and the language menu.
+    timeline::register(&mut env);
     let sites = match sites::Sites::load(&data_dir) {
         Ok(sites) => Arc::new(sites),
         Err(e) => {
@@ -1404,6 +1410,8 @@ pub async fn create_router(
             },
             sites::site_middleware,
         ))
+        // Fork: the language cookie and `partial=1` booking forms.
+        .layer(axum::middleware::from_fn(timeline::timeline_middleware))
         // OAuth callback query strings contain authorization codes/state.
         // Record only paths, never the default full request URI.
         .layer(TraceLayer::new_for_http().make_span_with(

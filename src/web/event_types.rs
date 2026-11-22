@@ -805,7 +805,8 @@ pub(super) async fn new_event_type_form(
             questions_preview_url => booking_form_ctx.preview_url,
             form_reminder_minutes => 1440,
             form_max_additional_guests => 0,
-            form_default_calendar_view => "month",
+            // Fork: new event types default to the week timeline.
+            form_default_calendar_view => timeline::DEFAULT_VIEW,
             week_start_setting => week_start::new_event(&state.pool, &user.id).await,
             form_first_slot_only => false,
             form_frequency_limits => "",
@@ -1002,10 +1003,8 @@ pub(super) async fn create_event_type(
         None => "round_robin",
     };
 
-    let default_calendar_view = match form.default_calendar_view.as_deref().unwrap_or("month") {
-        v @ ("month" | "week" | "column") => v.to_string(),
-        _ => "month".to_string(),
-    };
+    // Fork: week (the timeline) when no view is posted.
+    let default_calendar_view = timeline::calendar_view(form.default_calendar_view.as_deref());
 
     let first_slot_only = form.first_slot_only.as_deref() == Some("on");
     let timezone = normalize_event_type_tz(form.timezone.as_deref(), &user.timezone);
@@ -1701,10 +1700,8 @@ pub(super) async fn update_event_type(
 
     let reminder_minutes = posted_reminder_minutes(&form);
 
-    let default_calendar_view = match form.default_calendar_view.as_deref().unwrap_or("month") {
-        v @ ("month" | "week" | "column") => v.to_string(),
-        _ => "month".to_string(),
-    };
+    // Fork: week (the timeline) when no view is posted.
+    let default_calendar_view = timeline::calendar_view(form.default_calendar_view.as_deref());
 
     let timezone = resolve_event_type_tz(
         form.timezone.as_deref(),
@@ -2671,7 +2668,7 @@ async fn render_event_type_form_error(
             form_questions => form.questions.as_deref().unwrap_or(&booking_form_ctx.questions_json),
             form_notes_mode => form.notes_mode.as_deref().map(questions::notes_mode).unwrap_or(booking_form_ctx.notes_mode),
             questions_preview_url => booking_form_ctx.preview_url,
-            form_default_calendar_view => form.default_calendar_view.as_deref().unwrap_or("month"),
+            form_default_calendar_view => form.default_calendar_view.as_deref().unwrap_or(timeline::DEFAULT_VIEW), // Fork: week default.
             week_start_setting => week_start_setting,
             form_first_slot_only => form.first_slot_only.as_deref() == Some("on"),
             form_frequency_limits => form.frequency_limits.as_str(),
@@ -2990,7 +2987,8 @@ pub(super) async fn new_group_event_type_form(
             form_questions => booking_form_ctx.questions_json,
             form_notes_mode => booking_form_ctx.notes_mode,
             questions_preview_url => booking_form_ctx.preview_url,
-            form_default_calendar_view => "month",
+            // Fork: new event types default to the week timeline.
+            form_default_calendar_view => timeline::DEFAULT_VIEW,
             week_start_setting => week_start::new_event(&state.pool, &user.id).await,
             form_first_slot_only => false,
             form_frequency_limits => "",
@@ -3159,10 +3157,8 @@ pub(super) async fn create_group_event_type(
         .into_response();
     }
 
-    let default_calendar_view = match form.default_calendar_view.as_deref().unwrap_or("month") {
-        v @ ("month" | "week" | "column") => v.to_string(),
-        _ => "month".to_string(),
-    };
+    // Fork: week (the timeline) when no view is posted.
+    let default_calendar_view = timeline::calendar_view(form.default_calendar_view.as_deref());
 
     let first_slot_only = form.first_slot_only.as_deref() == Some("on");
     let timezone = normalize_event_type_tz(form.timezone.as_deref(), &user.timezone);
@@ -3849,10 +3845,8 @@ pub(super) async fn update_group_event_type(
 
     let reminder_minutes = posted_reminder_minutes(&form);
 
-    let default_calendar_view = match form.default_calendar_view.as_deref().unwrap_or("month") {
-        v @ ("month" | "week" | "column") => v.to_string(),
-        _ => "month".to_string(),
-    };
+    // Fork: week (the timeline) when no view is posted.
+    let default_calendar_view = timeline::calendar_view(form.default_calendar_view.as_deref());
 
     let timezone = resolve_event_type_tz(
         form.timezone.as_deref(),

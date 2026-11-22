@@ -380,8 +380,9 @@ pub async fn run(pool: &SqlitePool, cmd: EventTypeCommands) -> Result<()> {
             let id = Uuid::new_v4().to_string();
 
             sqlx::query(
-                "INSERT INTO event_types (id, account_id, title, slug, description, duration_min, buffer_before, buffer_after, bookable_from, bookable_until)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                // Fork: new event types open on the week timeline.
+                "INSERT INTO event_types (id, account_id, title, slug, description, duration_min, buffer_before, buffer_after, bookable_from, bookable_until, default_calendar_view)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&id)
             .bind(&account.0)
@@ -393,6 +394,7 @@ pub async fn run(pool: &SqlitePool, cmd: EventTypeCommands) -> Result<()> {
             .bind(buffer_after)
             .bind(bookable_from)
             .bind(bookable_until)
+            .bind(crate::web::timeline::DEFAULT_VIEW)
             .execute(pool)
             .await?;
 

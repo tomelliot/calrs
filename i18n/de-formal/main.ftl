@@ -547,3 +547,6 @@ auth-sso-local-mfa = Ein Konto mit dieser E-Mail-Adresse besteht bereits und nut
 auth-sso-no-account = Für diese E-Mail-Adresse gibt es kein Konto, und neue Konten werden nicht automatisch angelegt. Wenden Sie sich an Ihre Administration.
 auth-sso-unverified = Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht verifiziert. Bitten Sie Ihre Administration, sie beim Anbieter zu verifizieren, und versuchen Sie es dann erneut.
 auth-sso-no-email = Ihr Identitätsanbieter hat keine E-Mail-Adresse übermittelt. Bitten Sie Ihre Administration, sie für calrs freizugeben, und versuchen Sie es dann erneut.
+# Fork: the slot page's week timeline and booking dialog.
+tl-dialog-title = Bestätigen Sie Ihre Angaben
+tl-hint = Wählen Sie einen freien Termin im Kalender
