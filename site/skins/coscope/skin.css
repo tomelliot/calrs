@@ -1,0 +1,90 @@
+/* coscope booking skin. Tokens from coscope/website/DESIGN.md:
+   paper and ink-on-paper in light, scope-bg and phosphor in dark.
+   Public Sans sets the words, Anybody sets the mark. */
+
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("public-sans-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Public Sans";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("public-sans-italic-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Anybody";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("anybody-800-latin.woff2") format("woff2");
+}
+
+:root {
+  --skin-font: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --skin-display: "Anybody", "Public Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --bg: #ffffff;
+  --surface: #f3f6f4;
+  --surface-hover: #e9efeb;
+  --border: #dbe3de;
+  --border-hover: #81938a;
+  --text: #0b0f0d;
+  --text-secondary: #3d4a44;
+  --text-muted: #5d6b64;
+  --accent: #227c45;
+  --accent-hover: #1b6538;
+  --accent-muted: color-mix(in oklab, #227c45 12%, transparent);
+  --accent-subtle: color-mix(in oklab, #227c45 8%, transparent);
+  --accent-border: color-mix(in oklab, #227c45 40%, transparent);
+  --radius: 0.1875rem;
+  --radius-lg: 0.25rem;
+}
+
+/* `html.dark` out-specifies base.html's own dark rule and /accent.css. */
+html.dark {
+  --bg: #060b08;
+  --surface: #0c1310;
+  --surface-hover: #121b17;
+  --border: #1e2a24;
+  --border-hover: #55665e;
+  --text: #e9f0eb;
+  --text-secondary: #c7d5cb;
+  --text-muted: #9aa8a0;
+  /* Phosphor is light: keep the darker green under white text, use the
+     bright one for text and rules. */
+  --accent: #227c45;
+  --accent-hover: #2a9454;
+  --accent-muted: color-mix(in oklab, #83d494 16%, transparent);
+  --accent-subtle: color-mix(in oklab, #83d494 10%, transparent);
+  --accent-border: color-mix(in oklab, #83d494 40%, transparent);
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--skin-font);
+}
+
+h1,
+.lp-name {
+  font-family: var(--skin-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+html.dark a:not(.btn):not(.lp-et-title) {
+  color: #83d494;
+}
+
+/* The wordmark is wide: give it room. */
+.logo img {
+  max-height: 28px;
+  width: auto;
+}

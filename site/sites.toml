@@ -1,0 +1,30 @@
+# Booking sites served by this calrs instance (fork feature, see FORK.md).
+# Deployed to <data_dir>/sites.toml with skins/ beside it. Restart calrs after
+# a change. A request on a host not listed here behaves like stock calrs.
+
+# Where the source of this modified calrs is published (AGPL-3.0 section 13).
+# Linked from the footer of every booking site.
+source_url = "https://github.com/tomelliot/calrs"
+
+[sites."book.tomelliot.net"]
+skin = "tomelliot"
+title = "Tom Elliot"
+# calrs username whose meeting types the site offers.
+user = "tom"
+# Event type slugs offered here. Anything else is a 404 on this host.
+types = ["chat"]
+link = "https://www.tomelliot.net"
+# Guest emails: a Fastmail sending identity on the same SMTP login.
+from_email = "tom@tomelliot.net"
+from_name = "Tom Elliot"
+reply_to = "tom@tomelliot.net"
+
+[sites."book.coscope.ai"]
+skin = "coscope"
+title = "coscope"
+user = "tom"
+types = ["demo"]
+link = "https://coscope.ai"
+from_email = "tom@coscope.ai"
+from_name = "Tom at coscope"
+reply_to = "tom@coscope.ai"

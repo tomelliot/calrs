@@ -1,3 +1,5 @@
+> **Fork.** This is [tomelliot/calrs](https://github.com/tomelliot/calrs), a fork of [olivierlambert/calrs](https://github.com/olivierlambert/calrs) that serves several booking sites from one instance. See [FORK.md](FORK.md).
+
 <p align="center">
   <img src="assets/calrs.png" alt="calrs logo" width="200">
 </p>

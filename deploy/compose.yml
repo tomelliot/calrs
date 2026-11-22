@@ -1,0 +1,37 @@
+# calrs on imp. Started through bws-env so secrets never sit on disk:
+#
+#   cd /opt/calrs && CALRS_TAG=<tag> bws-env --only CALRS_SECRET_KEY \
+#     --only CALRS_FASTMAIL_SMTP_PASSWORD -- docker compose up -d
+#
+# CALRS_FASTMAIL_CALDAV_PASSWORD is not passed in: it is entered once when the
+# CalDAV source is added, and calrs stores it encrypted with CALRS_SECRET_KEY.
+#
+# The cloudflared-imp tunnel sends calrs.tomelliot.net, book.tomelliot.net and
+# book.coscope.ai to 127.0.0.1:3000. Nothing listens on a public port.
+services:
+  calrs:
+    image: ghcr.io/tomelliot/calrs:${CALRS_TAG:-latest}
+    container_name: calrs
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # calrs.db, sites.toml, skins/. Back up calrs.db; the key lives in bws.
+      - /var/lib/calrs:/var/lib/calrs
+    environment:
+      CALRS_BASE_URL: https://calrs.tomelliot.net
+      # Encrypts stored credentials. Kept in bws, so the data volume alone
+      # cannot decrypt them.
+      CALRS_SECRET_KEY: ${CALRS_SECRET_KEY:?set by bws-env}
+      RUST_LOG: calrs=info,tower_http=warn
+      # Fastmail SMTP. The login may send as any verified identity, so each
+      # site's from_email in sites.toml must be one.
+      CALRS_SMTP_HOST: smtp.fastmail.com
+      CALRS_SMTP_PORT: "465"
+      CALRS_SMTP_TLS_MODE: tls
+      # The Fastmail login (not a secret), e.g. in /opt/calrs/.env.
+      CALRS_SMTP_USERNAME: ${CALRS_SMTP_USERNAME:?set in .env}
+      CALRS_SMTP_PASSWORD: ${CALRS_FASTMAIL_SMTP_PASSWORD:?set by bws-env}
+      CALRS_SMTP_FROM_EMAIL: tom@tomelliot.net
+      CALRS_SMTP_FROM_NAME: Tom Elliot
+    mem_limit: 256m
