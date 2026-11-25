@@ -548,7 +548,7 @@ async fn propose_week_data(
             },
         ));
     }
-    busy.sort_by(|a, b| a.0.cmp(&b.0));
+    busy.sort_by_key(|a| a.0);
 
     // Open windows: rules, or that day's overrides, inside the booking window.
     let rules: Vec<(i32, String, String)> = sqlx::query_as(
