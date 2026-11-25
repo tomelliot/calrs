@@ -924,3 +924,24 @@ fn lettre_subject_encodes_crlf_safely() {
     let subject_count = lines.iter().filter(|l| l.starts_with("Subject:")).count();
     assert_eq!(subject_count, 1, "exactly one Subject header expected");
 }
+
+#[test]
+fn smtp_reply_is_one_bounded_line() {
+    use lettre::transport::smtp::response::{Category, Code, Detail, Response, Severity};
+    let code = Code::new(
+        Severity::PositiveCompletion,
+        Category::MailSystem,
+        Detail::Zero,
+    );
+    let response = Response::new(
+        code,
+        vec!["2.0.0 Ok: queued as 4F2A1C".into(), "second\r\nline".into()],
+    );
+    assert_eq!(
+        smtp_reply(&response),
+        "250 2.0.0 Ok: queued as 4F2A1C secondline"
+    );
+
+    let long = Response::new(code, vec!["x".repeat(500)]);
+    assert_eq!(smtp_reply(&long).chars().count(), 200);
+}

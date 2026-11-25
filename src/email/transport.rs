@@ -558,6 +558,14 @@ pub(super) async fn send_email(config: &SmtpConfig, email: Message) -> Result<()
     send_email_with_timeouts(config, email, SMTP_CONNECT_TIMEOUT, SMTP_SEND_TIMEOUT).await
 }
 
+/// The server's reply to DATA on one line, e.g. "250 2.0.0 Ok: queued as
+/// 4F2A1C". Cut to 200 characters: it is server-controlled text.
+pub(super) fn smtp_reply(response: &lettre::transport::smtp::response::Response) -> String {
+    let text = response.message().collect::<Vec<_>>().join(" ");
+    let line = format!("{} {}", response.code(), text);
+    line.chars().filter(|c| !c.is_control()).take(200).collect()
+}
+
 pub(super) async fn send_email_with_timeouts(
     config: &SmtpConfig,
     email: Message,
@@ -613,9 +621,21 @@ pub(super) async fn send_email_with_timeouts(
         .map(|a| a.to_string())
         .collect();
     let to_display = to_addrs.join(", ");
+    // The Message-ID and the server's reply (which usually names its queue
+    // id) tie this line to the message in the relay's own logs.
+    let message_id = email
+        .headers()
+        .get_raw("Message-ID")
+        .unwrap_or_default()
+        .to_string();
     match tokio::time::timeout(send_timeout, mailer.send(email)).await {
-        Ok(Ok(_)) => {
-            tracing::debug!(to = %to_display, "email delivered");
+        Ok(Ok(response)) => {
+            tracing::info!(
+                to = %to_display,
+                message_id = %message_id,
+                smtp_reply = %smtp_reply(&response),
+                "email delivered"
+            );
             Ok(())
         }
         // Not logged here: every caller logs the error once, with what it
