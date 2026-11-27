@@ -566,3 +566,12 @@ propose-snippet-pick = Klicken Sie auf eine Zeit, um sie zu buchen.
 propose-snippet-more = Weitere Zeiten finden Sie hier
 propose-load-failed = Diese Woche konnte nicht geladen werden. Versuchen Sie es erneut.
 propose-copy-failed = Kopieren fehlgeschlagen. Erlauben Sie den Zugriff auf die Zwischenablage und versuchen Sie es erneut.
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-sub = Wählen Sie eine neue Zeit für { $guest } in Ihrer Woche.
+bkmove-empty = Klicken Sie auf eine Zeit in der Woche, um die Buchung dorthin zu verschieben.
+bkmove-alt-body = Unsicher, was { $guest } passt? Schicken Sie einen Link, mit dem eine freie Zeit gewählt werden kann. Die Buchung behält ihre Zeit, bis gewählt wurde.
+bkmove-hint = Klicken Sie auf eine Zeit, um die Buchung dorthin zu verschieben
+bkmove-warn-busy = Das überschneidet sich mit „%1“ (%2) in Ihrem Kalender.
+bkmove-error-past = Diese Zeit ist vorbei. Wählen Sie eine spätere.
+bkmove-error-unavailable = Diese Zeit ist nicht mehr frei. Wählen Sie eine andere.

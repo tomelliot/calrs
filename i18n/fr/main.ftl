@@ -2557,3 +2557,39 @@ propose-copied =
         [one] { $count } horaire copié
        *[other] { $count } horaires copiés
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Reprogrammer la réservation
+bkmove-sub = Choisissez un nouvel horaire pour { $guest } dans votre semaine.
+bkmove-booking = Réservation
+bkmove-reset = Garder l’horaire actuel
+bkmove-now = Actuel
+bkmove-new = Nouveau
+bkmove-empty = Cliquez sur un horaire de la semaine pour y déplacer la réservation.
+bkmove-override = La déplacer quand même
+bkmove-note = { $guest } reçoit le nouvel horaire par e-mail avec une invitation mise à jour, et les deux agendas sont mis à jour.
+bkmove-submit = Déplacer la réservation
+bkmove-submit-to = Déplacer au %1
+bkmove-alt = Laisser l’invité choisir
+bkmove-alt-body = Vous ne savez pas ce qui convient à { $guest } ? Envoyez-lui un lien pour choisir un créneau libre. La réservation garde son horaire actuel jusqu’à son choix.
+bkmove-alt-button = Demander à l’invité de choisir un horaire
+bkmove-back-to-current = Semaine réservée
+bkmove-legend-current = Réservé actuellement
+bkmove-legend-new = Nouvel horaire
+bkmove-legend-guest-night = Nuit de l’invité
+bkmove-guest-tz = Fuseau horaire de l’invité
+bkmove-guest-tz-booked = Comme à la réservation ({ $city })
+bkmove-hint = Cliquez sur un horaire pour y déplacer la réservation
+bkmove-remove = Retirer cet horaire
+bkmove-preview-busy = occupé
+bkmove-preview-outside = hors des horaires
+bkmove-for-guest = { $when } pour l’invité ({ $city })
+bkmove-for-guest-js = %1 pour l’invité (%2)
+bkmove-warn-busy = Cet horaire chevauche « %1 » (%2) dans votre agenda.
+bkmove-warn-outside = Cet horaire est en dehors des horaires de %1.
+bkmove-error-past = Cet horaire est passé. Choisissez-en un plus tard.
+bkmove-error-unavailable = Cet horaire n’est plus libre. Choisissez-en un autre.
+bkmove-error-moved-on = Cette réservation a été annulée ou déplacée entre-temps, rien n’a donc été modifié.
+bkmove-moved-notice = { $guest } a été déplacé au { $date } à { $time }.
+bkmove-moved-emailed = { $guest } a reçu le nouvel horaire par e-mail.
+bkmove-note-no-email = Les copies d’agenda sont mises à jour. Aucun e-mail n’est envoyé, car l’e-mail n’est pas configuré sur ce serveur.

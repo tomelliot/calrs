@@ -243,7 +243,7 @@ pub(super) async fn propose_pick_meeting(
 }
 
 /// The city of a zone id, as the snippet's "(1:00 pm Berlin)" names it.
-fn zone_city(tz: Tz) -> String {
+pub(super) fn zone_city(tz: Tz) -> String {
     tz.name().rsplit('/').next().unwrap_or("").replace('_', " ")
 }
 
@@ -406,7 +406,15 @@ pub(super) async fn propose_week(
         .start
         .as_deref()
         .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-    match propose_week_data(&state, &auth_user, &target, start).await {
+    let scope = WeekScope {
+        et_id: &target.meeting.id,
+        user_id: &auth_user.user.id,
+        lang: auth_user.lang,
+        tz: target.tz,
+        duration_min: target.meeting.duration_min,
+        moving: None,
+    };
+    match week_data(&state, &scope, start).await {
         Ok(week) => axum::Json(week).into_response(),
         Err(e) => {
             tracing::error!(error = %e, %et_id, "cannot compute the propose week");
@@ -419,17 +427,39 @@ pub(super) async fn propose_week(
     }
 }
 
-async fn propose_week_data(
+/// Whose week [`week_data`] reads, and for which event type.
+pub(super) struct WeekScope<'a> {
+    pub(super) et_id: &'a str,
+    /// Whose calendars, bookings and time off are drawn as busy.
+    pub(super) user_id: &'a str,
+    pub(super) lang: &'static str,
+    /// The event type's zone, the grid's.
+    pub(super) tz: Tz,
+    pub(super) duration_min: i32,
+    /// A booking being moved by its host: it is left out of the busy time
+    /// and the offered starts (its own time is free to move within), and
+    /// the starts are those its guest's reschedule page would offer.
+    pub(super) moving: Option<MovingBooking<'a>>,
+}
+
+pub(super) struct MovingBooking<'a> {
+    pub(super) id: &'a str,
+    pub(super) uid: &'a str,
+    pub(super) hosts: &'a RescheduleHosts,
+}
+
+/// The week of the propose times page (fork), and of the host's
+/// reschedule page.
+pub(super) async fn week_data(
     state: &AppState,
-    auth_user: &crate::auth::AuthUser,
-    target: &Target,
+    scope: &WeekScope<'_>,
     start: Option<NaiveDate>,
 ) -> Result<ProposeWeek, sqlx::Error> {
     let pool = &state.pool;
-    let et_id = target.meeting.id.as_str();
-    let user_id = auth_user.user.id.as_str();
-    let lang = auth_user.lang;
-    let tz = target.tz;
+    let et_id = scope.et_id;
+    let user_id = scope.user_id;
+    let lang = scope.lang;
+    let tz = scope.tz;
     let now = Utc::now();
     let today = now.with_timezone(&tz).date_naive();
     let week_start = week_start::event(pool, et_id).await.effective();
@@ -446,12 +476,16 @@ async fn propose_week_data(
     let prev = (start > current).then(|| (start - Duration::days(7)).to_string());
     let next = (end <= last_day).then(|| end.to_string());
 
-    // Offered: the booking page's own slots (`sync_if_stale` included).
-    let offered: Vec<String> = offered_slots(state, et_id, tz, tz, start, end - Duration::days(1))
-        .await?
-        .into_iter()
-        .map(|s| utc_text(s.start))
-        .collect();
+    // Offered: the booking page's own slots (`sync_if_stale` included), or
+    // the moving booking's reschedule page's.
+    let offered: Vec<String> = match &scope.moving {
+        None => offered_slots(state, et_id, tz, tz, start, end - Duration::days(1))
+            .await?
+            .into_iter()
+            .map(|s| utc_text(s.start))
+            .collect(),
+        Some(moving) => moving_offered(state, et_id, tz, moving, start, end).await?,
+    };
 
     let (wall_start, wall_end) = (start.and_time(NaiveTime::MIN), end.and_time(NaiveTime::MIN));
     let (utc_start, utc_end) = (
@@ -484,8 +518,9 @@ async fn propose_week_data(
     // calrs bookings that make the user busy (the slot engine's rule).
     let start_iso = wall_start.format("%Y-%m-%dT%H:%M:%S").to_string();
     let end_iso = wall_end.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let bookings: Vec<(String, String, String, i64, Option<String>)> = sqlx::query_as(&format!(
-        "SELECT b.start_at, b.end_at, b.guest_name, b.time_version,
+    let bookings: Vec<(String, String, String, String, i64, Option<String>)> =
+        sqlx::query_as(&format!(
+            "SELECT b.id, b.start_at, b.end_at, b.guest_name, b.time_version,
                 COALESCE(NULLIF(et.timezone, ''), u.timezone)
          FROM bookings b
          JOIN event_types et ON et.id = b.event_type_id
@@ -494,19 +529,23 @@ async fn propose_week_data(
          WHERE {}
            AND {}
          ORDER BY b.start_at",
-        crate::booking_time::user_busy_bookings(true),
-        crate::booking_time::BUFFERED_BOOKING_WINDOW,
-    ))
-    .bind(user_id)
-    .bind(user_id)
-    .bind(user_id)
-    .bind(user_id)
-    .bind(user_id)
-    .bind(&end_iso)
-    .bind(&start_iso)
-    .fetch_all(pool)
-    .await?;
-    for (s, e, guest, version, zone) in bookings {
+            crate::booking_time::user_busy_bookings(true),
+            crate::booking_time::BUFFERED_BOOKING_WINDOW,
+        ))
+        .bind(user_id)
+        .bind(user_id)
+        .bind(user_id)
+        .bind(user_id)
+        .bind(user_id)
+        .bind(&end_iso)
+        .bind(&start_iso)
+        .fetch_all(pool)
+        .await?;
+    let moving_id = scope.moving.as_ref().map(|m| m.id);
+    for (id, s, e, guest, version, zone) in bookings {
+        if Some(id.as_str()) == moving_id {
+            continue;
+        }
         let legacy_tz = zone.and_then(|z| z.parse().ok()).unwrap_or(Tz::UTC);
         let Some((s, e)) = crate::booking_time::stored_buffered_busy_range(
             &s,
@@ -602,12 +641,79 @@ async fn propose_week_data(
     Ok(ProposeWeek {
         timezone: tz.name().to_string(),
         start: start.to_string(),
-        interval_min: slot_interval(pool, et_id, target.meeting.duration_min).await,
-        duration_min: target.meeting.duration_min,
+        interval_min: slot_interval(pool, et_id, scope.duration_min).await,
+        duration_min: scope.duration_min,
         offered,
         busy: busy.into_iter().map(|(_, b)| b).collect(),
         open,
         prev,
         next,
     })
+}
+
+/// The starts the moving booking's guest would be offered on its reschedule
+/// page in the days `from..to` (host-local): its hosts' busy time without the
+/// booking itself, through `compute_slots`, as `guest_reschedule_slots`.
+async fn moving_offered(
+    state: &AppState,
+    et_id: &str,
+    tz: Tz,
+    moving: &MovingBooking<'_>,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<String>, sqlx::Error> {
+    let (duration, buffer_before, buffer_after, min_notice): (i32, i32, i32, i32) = sqlx::query_as(
+        "SELECT duration_min, buffer_before, buffer_after, min_notice_min
+             FROM event_types WHERE id = ?",
+    )
+    .bind(et_id)
+    .fetch_one(&state.pool)
+    .await?;
+    let now_host = Utc::now().with_timezone(&tz).naive_local();
+    let today = now_host.date();
+    let start_offset = (from - today).num_days().max(0) as i32;
+    let days_ahead = (to - today).num_days() as i32 - start_offset;
+    if days_ahead <= 0 {
+        return Ok(Vec::new());
+    }
+    let window_end = (today + Duration::days((start_offset + days_ahead) as i64))
+        .and_hms_opt(23, 59, 59)
+        .unwrap_or(now_host);
+    let busy = reschedule_busy_source(
+        &state.pool,
+        moving.hosts,
+        et_id,
+        now_host,
+        window_end,
+        tz,
+        moving.id,
+        moving.uid,
+        false,
+    )
+    .await?;
+    let days = compute_slots(
+        &state.pool,
+        et_id,
+        duration,
+        buffer_before,
+        buffer_after,
+        min_notice,
+        start_offset,
+        days_ahead,
+        get_booking_window(&state.pool, et_id).await,
+        tz,
+        tz,
+        busy,
+        Some(moving.id),
+    )
+    .await;
+    Ok(days
+        .iter()
+        .flat_map(|d| d.slots.iter())
+        .filter_map(|s| {
+            let date = NaiveDate::parse_from_str(&s.host_date, "%Y-%m-%d").ok()?;
+            let at = wall_on(date, &s.host_time).and_then(|w| instant(tz, w))?;
+            Some(utc_text(at))
+        })
+        .collect())
 }

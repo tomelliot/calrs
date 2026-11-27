@@ -2664,3 +2664,39 @@ propose-copied =
         [many] Skopiowano { $count } terminów
        *[other] Skopiowano { $count } terminu
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Zmień termin rezerwacji
+bkmove-sub = Wybierz nowy termin dla: { $guest } w swoim tygodniu.
+bkmove-booking = Rezerwacja
+bkmove-reset = Zachowaj obecny termin
+bkmove-now = Teraz
+bkmove-new = Nowy
+bkmove-empty = Kliknij godzinę w tygodniu, aby przenieść tam rezerwację.
+bkmove-override = Przenieś mimo to
+bkmove-note = { $guest } dostaje nowy termin e-mailem ze zaktualizowanym zaproszeniem, a oba kalendarze są aktualizowane.
+bkmove-submit = Przenieś rezerwację
+bkmove-submit-to = Przenieś na %1
+bkmove-alt = Pozwól gościowi wybrać
+bkmove-alt-body = Nie wiesz, co pasuje osobie { $guest }? Wyślij link do wyboru dowolnego wolnego terminu. Rezerwacja zachowuje obecny termin do czasu wyboru.
+bkmove-alt-button = Poproś gościa o wybór terminu
+bkmove-back-to-current = Zarezerwowany tydzień
+bkmove-legend-current = Obecnie zarezerwowane
+bkmove-legend-new = Nowy termin
+bkmove-legend-guest-night = Noc gościa
+bkmove-guest-tz = Strefa czasowa gościa
+bkmove-guest-tz-booked = Jak przy rezerwacji ({ $city })
+bkmove-hint = Kliknij dowolną godzinę, aby przenieść tam rezerwację
+bkmove-remove = Usuń ten termin
+bkmove-preview-busy = zajęte
+bkmove-preview-outside = poza godzinami
+bkmove-for-guest = { $when } dla gościa ({ $city })
+bkmove-for-guest-js = %1 dla gościa (%2)
+bkmove-warn-busy = Koliduje z „%1” (%2) w Twoim kalendarzu.
+bkmove-warn-outside = To poza godzinami spotkania %1.
+bkmove-error-past = Ten termin już minął. Wybierz późniejszy.
+bkmove-error-unavailable = Ten termin nie jest już wolny. Wybierz inny.
+bkmove-error-moved-on = Ta rezerwacja została w międzyczasie anulowana lub przeniesiona, więc nic nie zmieniono.
+bkmove-moved-notice = Rezerwacja ({ $guest }) przeniesiona na { $date }, { $time }.
+bkmove-moved-emailed = { $guest } dostaje nowy termin e-mailem.
+bkmove-note-no-email = Kopie w kalendarzach są aktualizowane. Nie zostanie wysłany e-mail, bo na tym serwerze nie skonfigurowano poczty.

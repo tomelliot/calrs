@@ -2557,3 +2557,39 @@ propose-copied =
         [one] Kopeeriti { $count } aeg
        *[other] Kopeeriti { $count } aega
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Muuda broneeringu aega
+bkmove-sub = Vali oma nädalast uus aeg külalisele { $guest }.
+bkmove-booking = Broneering
+bkmove-reset = Jäta praegune aeg
+bkmove-now = Praegu
+bkmove-new = Uus
+bkmove-empty = Klõpsa nädalas ajal, et broneering sinna viia.
+bkmove-override = Vii see sinna ikkagi
+bkmove-note = { $guest } saab uue aja e-kirjaga koos uuendatud kutsega ja mõlemad kalendrid uuendatakse.
+bkmove-submit = Vii broneering üle
+bkmove-submit-to = Vii aega %1
+bkmove-alt = Lase külalisel valida
+bkmove-alt-body = Pole kindel, mis külalisele { $guest } sobib? Saada link, et ta saaks valida mis tahes vaba aja. Broneering jääb praegusele ajale, kuni valik on tehtud.
+bkmove-alt-button = Palu külalisel aeg valida
+bkmove-back-to-current = Broneeritud nädal
+bkmove-legend-current = Praegu broneeritud
+bkmove-legend-new = Uus aeg
+bkmove-legend-guest-night = Külalise öö
+bkmove-guest-tz = Külalise ajavöönd
+bkmove-guest-tz-booked = Nagu broneeringul ({ $city })
+bkmove-hint = Klõpsa mis tahes ajal, et broneering sinna viia
+bkmove-remove = Eemalda see aeg
+bkmove-preview-busy = hõivatud
+bkmove-preview-outside = väljaspool aegu
+bkmove-for-guest = { $when } külalisele ({ $city })
+bkmove-for-guest-js = %1 külalisele (%2)
+bkmove-warn-busy = See kattub sinu kalendris sündmusega „%1” (%2).
+bkmove-warn-outside = See on väljaspool kohtumise %1 aegu.
+bkmove-error-past = See aeg on möödas. Vali hilisem aeg.
+bkmove-error-unavailable = See aeg pole enam vaba. Vali muu aeg.
+bkmove-error-moved-on = Broneering tühistati või viidi vahepeal üle, seega midagi ei muudetud.
+bkmove-moved-notice = Külalise { $guest } broneering viidi aega { $date } kell { $time }.
+bkmove-moved-emailed = { $guest } sai uue aja e-kirjaga.
+bkmove-note-no-email = Kalendrikoopiad uuendatakse. E-kirja ei saadeta, sest selles serveris pole e-post seadistatud.

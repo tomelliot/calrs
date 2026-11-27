@@ -2557,3 +2557,39 @@ propose-copied =
         [one] { $count } horário copiado
        *[other] { $count } horários copiados
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Reagendar reserva
+bkmove-sub = Escolha um novo horário para { $guest } na sua semana.
+bkmove-booking = Reserva
+bkmove-reset = Manter o horário atual
+bkmove-now = Agora
+bkmove-new = Novo
+bkmove-empty = Clique em um horário da semana para mover a reserva para lá.
+bkmove-override = Mover para lá mesmo assim
+bkmove-note = { $guest } recebe o novo horário por e-mail com um convite atualizado, e as duas agendas são atualizadas.
+bkmove-submit = Mover reserva
+bkmove-submit-to = Mover para %1
+bkmove-alt = Deixar o convidado escolher
+bkmove-alt-body = Não sabe o que funciona para { $guest }? Envie um link para escolher qualquer horário livre. A reserva mantém o horário atual até a escolha.
+bkmove-alt-button = Pedir ao convidado que escolha um horário
+bkmove-back-to-current = Semana reservada
+bkmove-legend-current = Reservado agora
+bkmove-legend-new = Novo horário
+bkmove-legend-guest-night = Noite do convidado
+bkmove-guest-tz = Fuso horário do convidado
+bkmove-guest-tz-booked = Como reservado ({ $city })
+bkmove-hint = Clique em qualquer horário para mover a reserva para lá
+bkmove-remove = Remover este horário
+bkmove-preview-busy = ocupado
+bkmove-preview-outside = fora do horário
+bkmove-for-guest = { $when } para o convidado ({ $city })
+bkmove-for-guest-js = %1 para o convidado (%2)
+bkmove-warn-busy = Isso conflita com “%1” (%2) na sua agenda.
+bkmove-warn-outside = Isso está fora do horário de %1.
+bkmove-error-past = Esse horário já passou. Escolha um posterior.
+bkmove-error-unavailable = Esse horário não está mais livre. Escolha outro.
+bkmove-error-moved-on = Essa reserva foi cancelada ou movida nesse meio-tempo, então nada foi alterado.
+bkmove-moved-notice = Reserva de { $guest } movida para { $date } às { $time }.
+bkmove-moved-emailed = { $guest } recebeu o novo horário por e-mail.
+bkmove-note-no-email = As cópias da agenda são atualizadas. Nenhum e-mail é enviado, pois o e-mail não está configurado neste servidor.

@@ -675,7 +675,14 @@ pub(super) async fn dashboard_bookings(
             "bookings-error-reschedule-resend-too-soon",
             None,
         ),
+        Some("booking-moved-on") => {
+            crate::i18n::translate(auth_user.lang, "bkmove-error-moved-on", None)
+        }
         Some(_) => crate::i18n::translate(auth_user.lang, "bookings-error-generic", None),
+        None => String::new(),
+    };
+    let moved_message = match query.get("moved") {
+        Some(id) => moved_notice(&state.pool, &state.secret_key, user, id, auth_user.lang).await,
         None => String::new(),
     };
 
@@ -914,6 +921,7 @@ pub(super) async fn dashboard_bookings(
             sidebar => sidebar_context(&auth_user, "bookings"),
             lang => auth_user.lang,
             error_message => error_message,
+            moved_message => moved_message,
             recent_bookings => recent_ctx,
             cancelled_bookings => cancelled_ctx,
             pending_bookings => pending_ctx,
@@ -2022,6 +2030,50 @@ pub(super) struct BookingActionForm {
 /// (a page and search of the bookings page, or the overview), checked to
 /// be a dashboard path of this site, else the bookings page. A refusal
 /// (`error`) is shown on the bookings page, on the page it came from.
+/// The notice after the host moved a booking (`host_move_booking`): who
+/// moved to when, in the host's zone. Empty for a booking that is not one of
+/// the user's, or no longer confirmed.
+async fn moved_notice(
+    pool: &SqlitePool,
+    secret_key: &[u8; 32],
+    user: &crate::models::User,
+    booking_id: &str,
+    lang: &'static str,
+) -> String {
+    let row: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT b.guest_name, b.start_at, et.id FROM bookings b
+         JOIN event_types et ON et.id = b.event_type_id
+         JOIN accounts a ON a.id = et.account_id
+         WHERE b.id = ? AND a.user_id = ? AND b.status = 'confirmed'",
+    )
+    .bind(booking_id)
+    .bind(&user.id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+    let Some((guest, start_at, et_id)) = row else {
+        return String::new();
+    };
+    let host_tz = get_host_tz(pool, &et_id).await;
+    let shown: Tz = user.timezone.parse().unwrap_or(host_tz);
+    let Some(start) = crate::booking_time::local(&start_at, host_tz, shown) else {
+        return String::new();
+    };
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("guest", guest);
+    args.set("date", crate::i18n::format_long_date(start.date(), lang));
+    args.set("time", start.format("%H:%M").to_string());
+    let moved = crate::i18n::translate(lang, "bkmove-moved-notice", Some(&args));
+    // The guest is only told when email is set up: say so only then.
+    match crate::email::load_smtp_config(pool, secret_key).await {
+        Ok(Some(_)) => format!(
+            "{moved} {}",
+            crate::i18n::translate(lang, "bkmove-moved-emailed", Some(&args))
+        ),
+        _ => moved,
+    }
+}
+
 pub(super) fn bookings_return(raw: Option<&str>, error: Option<&str>) -> String {
     let back = listing::return_path(raw, "/dashboard");
     match error {

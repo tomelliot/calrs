@@ -130,9 +130,18 @@ The old time is not retained as a second booking. Declining or expiring a resche
 
 ### Host reschedule
 
-The dashboard's **Reschedule** action asks the **guest to pick a new time**:
+The dashboard's **Reschedule** action on a confirmed booking opens your week, drawn as on **Propose times**: your calendars' busy time, the event type's hours, the booking's current time as a dashed outline, and, when the guest booked from another time zone, their hours beside yours.
 
-1. Open the action from **Bookings** and confirm that the guest should receive a rescheduling request.
+**Move it yourself.** Click the new time, then **Move to …**:
+
+- calrs moves the booking, updates every calendar copy and shared resource reservation, and emails the guest (and additional attendees) the new time with an updated invite. A reschedule SMS goes out where the event type sends them, and webhooks get `booking.rescheduled`.
+- The booking stays confirmed, and the guest's old cancel and reschedule links stop working.
+- A time that is busy in your calendars, or outside the event type's hours, is allowed after a warning: tick **Move it there anyway**. The time must be in the future, and a required shared resource must be free. The guest-side minimum notice to reschedule does not apply to you.
+- A request still waiting for your approval cannot be moved this way, since moving it would approve it: approve it first, or ask the guest.
+
+**Or let the guest choose.** The same page asks the **guest to pick a new time**:
+
+1. Choose **Ask the guest to pick a time**.
 2. calrs sends the guest a new link. The booking stays at its current time until the guest chooses another.
 3. The guest picks and confirms an available slot. Because the host requested the change, it is confirmed without another host-approval step, even on an event type that normally requires confirmation.
 4. Calendar copies are updated and the guest receives the changed invitation. Google Meet keeps its existing conference link.

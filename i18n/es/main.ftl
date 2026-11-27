@@ -2560,3 +2560,39 @@ propose-copied =
         [one] { $count } horario copiado
        *[other] { $count } horarios copiados
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Reprogramar reserva
+bkmove-sub = Elige una nueva hora para { $guest } en tu semana.
+bkmove-booking = Reserva
+bkmove-reset = Mantener la hora actual
+bkmove-now = Ahora
+bkmove-new = Nueva
+bkmove-empty = Haz clic en una hora de la semana para mover la reserva allí.
+bkmove-override = Moverla allí de todos modos
+bkmove-note = { $guest } recibe la nueva hora por correo con una invitación actualizada, y ambos calendarios se actualizan.
+bkmove-submit = Mover reserva
+bkmove-submit-to = Mover al %1
+bkmove-alt = Dejar que el invitado elija
+bkmove-alt-body = ¿No sabes qué le viene bien a { $guest }? Envíale un enlace para elegir cualquier hora libre. La reserva mantiene su hora actual hasta que elija.
+bkmove-alt-button = Pedir al invitado que elija una hora
+bkmove-back-to-current = Semana reservada
+bkmove-legend-current = Reservada ahora
+bkmove-legend-new = Nueva hora
+bkmove-legend-guest-night = Noche del invitado
+bkmove-guest-tz = Zona horaria del invitado
+bkmove-guest-tz-booked = Como se reservó ({ $city })
+bkmove-hint = Haz clic en cualquier hora para mover la reserva allí
+bkmove-remove = Quitar esta hora
+bkmove-preview-busy = ocupado
+bkmove-preview-outside = fuera de horario
+bkmove-for-guest = { $when } para el invitado ({ $city })
+bkmove-for-guest-js = %1 para el invitado (%2)
+bkmove-warn-busy = Coincide con «%1» (%2) en tu calendario.
+bkmove-warn-outside = Está fuera del horario de %1.
+bkmove-error-past = Esa hora ya pasó. Elige una posterior.
+bkmove-error-unavailable = Esa hora ya no está libre. Elige otra.
+bkmove-error-moved-on = Esa reserva se canceló o se movió mientras tanto, así que no se cambió nada.
+bkmove-moved-notice = Reserva de { $guest } movida al { $date } a las { $time }.
+bkmove-moved-emailed = { $guest } recibió la nueva hora por correo.
+bkmove-note-no-email = Las copias del calendario se actualizan. No se envía ningún correo, porque el correo no está configurado en este servidor.

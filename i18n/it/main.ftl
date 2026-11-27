@@ -2557,3 +2557,39 @@ propose-copied =
         [one] { $count } orario copiato
        *[other] { $count } orari copiati
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Riprogramma prenotazione
+bkmove-sub = Scegli un nuovo orario per { $guest } nella tua settimana.
+bkmove-booking = Prenotazione
+bkmove-reset = Mantieni l’orario attuale
+bkmove-now = Ora
+bkmove-new = Nuovo
+bkmove-empty = Fai clic su un orario della settimana per spostarvi la prenotazione.
+bkmove-override = Spostala lì comunque
+bkmove-note = { $guest } riceve il nuovo orario via email con un invito aggiornato, ed entrambi i calendari vengono aggiornati.
+bkmove-submit = Sposta prenotazione
+bkmove-submit-to = Sposta a %1
+bkmove-alt = Lascia scegliere all’ospite
+bkmove-alt-body = Non sai cosa va bene per { $guest }? Invia un link per scegliere un orario libero. La prenotazione mantiene l’orario attuale finché non sceglie.
+bkmove-alt-button = Chiedi all’ospite di scegliere un orario
+bkmove-back-to-current = Settimana prenotata
+bkmove-legend-current = Prenotato ora
+bkmove-legend-new = Nuovo orario
+bkmove-legend-guest-night = Notte dell’ospite
+bkmove-guest-tz = Fuso orario dell’ospite
+bkmove-guest-tz-booked = Come prenotato ({ $city })
+bkmove-hint = Fai clic su un orario per spostarvi la prenotazione
+bkmove-remove = Rimuovi questo orario
+bkmove-preview-busy = occupato
+bkmove-preview-outside = fuori orario
+bkmove-for-guest = { $when } per l’ospite ({ $city })
+bkmove-for-guest-js = %1 per l’ospite (%2)
+bkmove-warn-busy = Si sovrappone a «%1» (%2) nel tuo calendario.
+bkmove-warn-outside = È fuori dagli orari di %1.
+bkmove-error-past = Quell’orario è passato. Scegline uno successivo.
+bkmove-error-unavailable = Quell’orario non è più libero. Scegline un altro.
+bkmove-error-moved-on = La prenotazione è stata annullata o spostata nel frattempo, quindi non è cambiato nulla.
+bkmove-moved-notice = Prenotazione di { $guest } spostata a { $date } alle { $time }.
+bkmove-moved-emailed = { $guest } ha ricevuto il nuovo orario via email.
+bkmove-note-no-email = Le copie del calendario vengono aggiornate. Nessuna email viene inviata, perché l’email non è configurata su questo server.

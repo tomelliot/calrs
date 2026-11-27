@@ -2685,3 +2685,39 @@ propose-copied =
         [many] Скопировано { $count } вариантов
        *[other] Скопировано { $count } варианта
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Перенести бронирование
+bkmove-sub = Выберите новое время для { $guest } на своей неделе.
+bkmove-booking = Бронирование
+bkmove-reset = Оставить текущее время
+bkmove-now = Сейчас
+bkmove-new = Новое
+bkmove-empty = Нажмите на время на неделе, чтобы перенести туда бронирование.
+bkmove-override = Всё равно перенести
+bkmove-note = { $guest } получит новое время по почте с обновлённым приглашением, и оба календаря будут обновлены.
+bkmove-submit = Перенести бронирование
+bkmove-submit-to = Перенести на %1
+bkmove-alt = Дать гостю выбрать
+bkmove-alt-body = Не знаете, что удобно { $guest }? Отправьте ссылку, чтобы выбрать любое свободное время. Бронирование сохранит текущее время, пока выбор не сделан.
+bkmove-alt-button = Попросить гостя выбрать время
+bkmove-back-to-current = Забронированная неделя
+bkmove-legend-current = Сейчас забронировано
+bkmove-legend-new = Новое время
+bkmove-legend-guest-night = Ночь гостя
+bkmove-guest-tz = Часовой пояс гостя
+bkmove-guest-tz-booked = Как при бронировании ({ $city })
+bkmove-hint = Нажмите на любое время, чтобы перенести туда бронирование
+bkmove-remove = Убрать это время
+bkmove-preview-busy = занято
+bkmove-preview-outside = вне часов
+bkmove-for-guest = { $when } для гостя ({ $city })
+bkmove-for-guest-js = %1 для гостя (%2)
+bkmove-warn-busy = Это пересекается с «%1» (%2) в вашем календаре.
+bkmove-warn-outside = Это вне часов встречи %1.
+bkmove-error-past = Это время уже прошло. Выберите более позднее.
+bkmove-error-unavailable = Это время больше не свободно. Выберите другое.
+bkmove-error-moved-on = Бронирование тем временем отменили или перенесли, поэтому ничего не изменено.
+bkmove-moved-notice = Бронирование { $guest } перенесено на { $date }, { $time }.
+bkmove-moved-emailed = { $guest } получил(а) новое время по почте.
+bkmove-note-no-email = Копии в календарях обновляются. Письмо не отправляется: почта на этом сервере не настроена.

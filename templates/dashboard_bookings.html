@@ -56,6 +56,9 @@
   </div>
 </header>
 
+{% if moved_message %}
+<div class="notice notice--success" role="status">{{ ic.icon("check") }}<span>{{ moved_message }}</span></div>
+{% endif %}
 {% if error_message %}
 <div class="notice notice--error" role="alert">{{ ic.icon("alert") }}<span>{{ error_message }}</span></div>
 {% endif %}
