@@ -1793,7 +1793,72 @@ pub(super) async fn guest_reschedule_booking(
         ))
         .into_response();
     }
+    let visitor = crate::i18n::detect_from_headers(&headers);
+    reschedule_to(&state, &token, form, Mover::Guest { visitor }).await
+}
 
+/// Who moves a booking through [`reschedule_to`].
+pub(super) enum Mover {
+    /// The guest, with their reschedule link (`visitor` is the browser's
+    /// language, for pages shown before the booking's own is known).
+    Guest { visitor: &'static str },
+    /// The host, from the dashboard: the time they picked, in the guest's
+    /// zone. `force` moves it onto busy time or outside the event type's
+    /// hours, which the host was warned about. The time must still be in
+    /// the future and free of required shared resources.
+    Host { booking_id: String, force: bool },
+}
+
+impl Mover {
+    fn is_host(&self) -> bool {
+        matches!(self, Mover::Host { .. })
+    }
+
+    /// A refusal on the time: the guest gets the bare message, as before;
+    /// the host goes back to the week with the reason.
+    fn refuse(&self, lang: &'static str, key: &'static str) -> Response {
+        match self {
+            Mover::Guest { .. } => Html(crate::i18n::translate(lang, key, None)).into_response(),
+            Mover::Host { booking_id, .. } => {
+                let code = key.strip_prefix("error-").unwrap_or(key);
+                Redirect::to(&format!(
+                    "/dashboard/bookings/{booking_id}/reschedule?error={code}"
+                ))
+                .into_response()
+            }
+        }
+    }
+
+    /// The booking is gone or moved on (cancelled, declined, rescheduled).
+    fn gone(&self, state: &AppState, lang: &'static str) -> Response {
+        match self {
+            Mover::Guest { .. } => render_booking_action_error_keys_in(
+                state,
+                lang,
+                "bae-title-invalid-link",
+                "bae-body-reschedule-link-invalid",
+            ),
+            Mover::Host { .. } => {
+                Redirect::to(&bookings_return(None, Some("booking-moved-on"))).into_response()
+            }
+        }
+    }
+}
+
+/// Moves the booking whose reschedule token is `token` to `form`'s time
+/// (guest-local, in `form.tz`): every check, the update, the webhook, the
+/// calendar pushes, the emails and the SMS. The guest's reschedule link and
+/// the host's move both come here; [`Mover`] says which, and what differs.
+pub(super) async fn reschedule_to(
+    state: &AppState,
+    token: &str,
+    form: RescheduleForm,
+    mover: Mover,
+) -> Response {
+    let visitor = match &mover {
+        Mover::Guest { visitor } => *visitor,
+        Mover::Host { .. } => "en",
+    };
     let booking: Option<(
         String,
         String,
@@ -1823,7 +1888,7 @@ pub(super) async fn guest_reschedule_booking(
              JOIN users u ON u.id = a.user_id
              WHERE b.reschedule_token = ? AND b.status IN ('confirmed', 'pending')",
     )
-    .bind(&token)
+    .bind(token)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None);
@@ -1847,48 +1912,43 @@ pub(super) async fn guest_reschedule_booking(
         reschedule_by_host,
     ) = match booking {
         Some(b) => b,
-        None => {
-            return render_booking_action_error_keys_in(
-                &state,
-                crate::i18n::detect_from_headers(&headers),
-                "bae-title-invalid-link",
-                "bae-body-reschedule-link-invalid",
-            );
-        }
+        None => return mover.gone(state, visitor),
     };
 
     // Past the rate limit: the page and every email use the language stored
-    // with the booking, as the slot picker did (#209).
-    let lang = token_page_lang(
-        stored_language.as_deref(),
-        crate::i18n::detect_from_headers(&headers),
-    );
+    // with the booking, as the slot picker did (#209). A host's move is
+    // answered on the dashboard, but its emails are the guest's all the same.
+    let lang = token_page_lang(stored_language.as_deref(), visitor);
 
     // Defensive notice-window check on POST too: the GET may have been
     // cached, or the cutoff may have rolled over between page load and
     // submit. Either way, never mutate state inside the blocked window.
-    if let Some((notice_min, host_email)) = fetch_notice_min_and_host_email(
-        &state.pool,
-        "reschedule_token",
-        &token,
-        "reschedule_notice_min",
-    )
-    .await
-    {
-        if let Some(resp) = check_notice_window(
-            &state,
-            notice_min,
-            &old_start_at,
-            &host_email,
-            "reschedule",
-            lang,
-        ) {
-            tracing::info!(
-                action = "reschedule",
-                booking_id = %booking_id,
-                "guest action blocked by notice window (POST)"
-            );
-            return resp;
+    // The window guards the host's time from late changes by the guest: the
+    // host moving their own meeting is not held to it.
+    if !mover.is_host() {
+        if let Some((notice_min, host_email)) = fetch_notice_min_and_host_email(
+            &state.pool,
+            "reschedule_token",
+            token,
+            "reschedule_notice_min",
+        )
+        .await
+        {
+            if let Some(resp) = check_notice_window(
+                state,
+                notice_min,
+                &old_start_at,
+                &host_email,
+                "reschedule",
+                lang,
+            ) {
+                tracing::info!(
+                    action = "reschedule",
+                    booking_id = %booking_id,
+                    "guest action blocked by notice window (POST)"
+                );
+                return resp;
+            }
         }
     }
 
@@ -1899,7 +1959,7 @@ pub(super) async fn guest_reschedule_booking(
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
-        return render_booking_action_error_keys_in(&state, lang, "bae-title-invalid-booking", e);
+        return render_booking_action_error_keys_in(state, lang, "bae-title-invalid-booking", e);
     }
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
@@ -1929,18 +1989,31 @@ pub(super) async fn guest_reschedule_booking(
     if chrono::DateTime::parse_from_rfc3339(&encoded_start)
         .unwrap()
         .with_timezone(&Utc)
-        < Utc::now() + Duration::minutes(min_notice as i64)
+        < Utc::now()
+            + Duration::minutes(if mover.is_host() {
+                0
+            } else {
+                min_notice as i64
+            })
     {
-        return Html(crate::i18n::translate(lang, "error-slot-too-soon", None)).into_response();
+        return mover.refuse(lang, "error-slot-too-soon");
     }
+    // The host was shown the clash or the closed hours and chose the time
+    // anyway: the availability checks below are skipped, nothing else.
+    let forced = matches!(mover, Mover::Host { force: true, .. });
 
     // Booking window (rolling horizon and bookable date range). The slot
     // list already hides anything outside it, but that is advisory: a crafted
     // POST has to be rejected here too.
-    if let Some(refusal) =
-        booking_window_refusal(&state.pool, &et_id, slot_start.date(), host_tz, lang).await
-    {
-        return Html(refusal).into_response();
+    if !forced {
+        if let Some(refusal) =
+            booking_window_refusal(&state.pool, &et_id, slot_start.date(), host_tz, lang).await
+        {
+            return match mover {
+                Mover::Guest { .. } => Html(refusal).into_response(),
+                Mover::Host { .. } => mover.refuse(lang, "error-slot-unavailable"),
+            };
+        }
     }
 
     // Check conflicts excluding this booking, against the calendars the
@@ -1999,85 +2072,82 @@ pub(super) async fn guest_reschedule_booking(
         }
         _ => {
             drop(booking_guard);
-            return render_booking_action_error_keys_in(
-                &state,
-                lang,
-                "bae-title-invalid-link",
-                "bae-body-reschedule-link-invalid",
-            );
+            return mover.gone(state, lang);
         }
     };
 
-    let busy = match reschedule_busy_source(
-        &state.pool,
-        &hosts,
-        &et_id,
-        check_start,
-        check_end,
-        host_tz,
-        &booking_id,
-        &uid,
-        true,
-    )
-    .await
-    {
-        Ok(busy) => busy,
-        Err(e) => return internal_error_response("availability check", &e),
-    };
-    if !busy_source_is_free(&busy, check_start, check_end) {
-        return Html(crate::i18n::translate(lang, "error-slot-unavailable", None)).into_response();
-    }
+    if !forced {
+        let busy = match reschedule_busy_source(
+            &state.pool,
+            &hosts,
+            &et_id,
+            check_start,
+            check_end,
+            host_tz,
+            &booking_id,
+            &uid,
+            true,
+        )
+        .await
+        {
+            Ok(busy) => busy,
+            Err(e) => return internal_error_response("availability check", &e),
+        };
+        if !busy_source_is_free(&busy, check_start, check_end) {
+            return mover.refuse(lang, "error-slot-unavailable");
+        }
 
-    // The time must be one the slot page offers. Weekly rules, date
-    // overrides, interval alignment and first_slot_only are only enforced
-    // by recomputing the page's own slots; the checks above just give the
-    // common refusals their own message.
-    let window = offered_slot_window(host_tz, slot_start);
-    let (buffer_before, buffer_after): (i32, i32) =
-        sqlx::query_as("SELECT buffer_before, buffer_after FROM event_types WHERE id = ?")
-            .bind(&et_id)
-            .fetch_optional(&state.pool)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or((0, 0));
-    let offered_busy = match reschedule_busy_source(
-        &state.pool,
-        &hosts,
-        &et_id,
-        window.busy_start,
-        window.busy_end,
-        host_tz,
-        &booking_id,
-        &uid,
-        true,
-    )
-    .await
-    {
-        Ok(busy) => busy,
-        Err(e) => return internal_error_response("availability check", &e),
-    };
-    let offered = match is_offered_slot(
-        &state.pool,
-        &et_id,
-        duration,
-        buffer_before,
-        buffer_after,
-        min_notice,
-        host_tz,
-        guest_tz,
-        &window,
-        offered_busy,
-        Some(&booking_id),
-        slot_start,
-    )
-    .await
-    {
-        Ok(offered) => offered,
-        Err(e) => return internal_error_response("availability check", &e),
-    };
-    if !offered {
-        return Html(crate::i18n::translate(lang, "error-slot-unavailable", None)).into_response();
+        // The time must be one the slot page offers. Weekly rules, date
+        // overrides, interval alignment and first_slot_only are only enforced
+        // by recomputing the page's own slots; the checks above just give the
+        // common refusals their own message.
+        let window = offered_slot_window(host_tz, slot_start);
+        let (buffer_before, buffer_after): (i32, i32) =
+            sqlx::query_as("SELECT buffer_before, buffer_after FROM event_types WHERE id = ?")
+                .bind(&et_id)
+                .fetch_optional(&state.pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or((0, 0));
+        let offered_busy = match reschedule_busy_source(
+            &state.pool,
+            &hosts,
+            &et_id,
+            window.busy_start,
+            window.busy_end,
+            host_tz,
+            &booking_id,
+            &uid,
+            true,
+        )
+        .await
+        {
+            Ok(busy) => busy,
+            Err(e) => return internal_error_response("availability check", &e),
+        };
+        let offered = match is_offered_slot(
+            &state.pool,
+            &et_id,
+            duration,
+            buffer_before,
+            buffer_after,
+            min_notice,
+            host_tz,
+            guest_tz,
+            &window,
+            offered_busy,
+            Some(&booking_id),
+            slot_start,
+        )
+        .await
+        {
+            Ok(offered) => offered,
+            Err(e) => return internal_error_response("availability check", &e),
+        };
+        if !offered {
+            return mover.refuse(lang, "error-slot-unavailable");
+        }
     }
 
     // Re-check required resources for the new slot (excluding this booking's
@@ -2094,8 +2164,7 @@ pub(super) async fn guest_reschedule_booking(
     .await
     {
         Ok(crate::resources::ResourceCheck::Busy) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return mover.refuse(lang, "error-slot-unavailable");
         }
         Ok(crate::resources::ResourceCheck::Free { assigned }) => assigned,
         Ok(crate::resources::ResourceCheck::NoResources) => None,
@@ -2133,7 +2202,7 @@ pub(super) async fn guest_reschedule_booking(
     // - Host-initiated reschedule → confirmed (host already approved)
     // - Guest-initiated + requires_confirmation → pending (needs host approval)
     // - Guest-initiated + no confirmation needed → confirmed (auto-approved)
-    let host_initiated = reschedule_by_host != 0;
+    let host_initiated = reschedule_by_host != 0 || mover.is_host();
     let needs_approval = !host_initiated && requires_confirmation != 0;
     let new_status = if needs_approval {
         "pending"
@@ -2162,10 +2231,7 @@ pub(super) async fn guest_reschedule_booking(
     .await
     {
         Ok(false) => {}
-        Ok(true) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response()
-        }
+        Ok(true) => return mover.refuse(lang, "error-slot-unavailable"),
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
     // The pending window is written by the same UPDATE as the status: a
@@ -2212,7 +2278,7 @@ pub(super) async fn guest_reschedule_booking(
     .bind(&pending_expires_at)
     .bind(&pending_since)
     .bind(&booking_id)
-    .bind(&token)
+    .bind(token)
     .bind(&raw_start_at)
     .bind(&raw_end_at)
     .execute(&state.pool)
@@ -2222,19 +2288,13 @@ pub(super) async fn guest_reschedule_booking(
     // No webhook, release, email or push may advertise a move that did not
     // happen.
     if matches!(&update_result, Ok(r) if r.rows_affected() == 0) {
-        return render_booking_action_error_keys_in(
-            &state,
-            lang,
-            "bae-title-invalid-link",
-            "bae-body-reschedule-link-invalid",
-        );
+        return mover.gone(state, lang);
     }
     if let Err(e) = update_result {
         // idx_bookings_no_overlap can reject the new time; do not proceed to
         // emails and pushes advertising a time the DB refused.
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return mover.refuse(lang, "error-slot-unavailable");
         }
         return internal_error_response("database query", &e);
     }
@@ -2252,7 +2312,9 @@ pub(super) async fn guest_reschedule_booking(
         resource_release_one(&state.pool, &state.secret_key, &uid, &old_rid).await;
     }
 
-    if host_initiated {
+    if mover.is_host() {
+        tracing::info!(booking_id = %booking_id, old_start = %old_start_at, new_start = %new_start_at, forced, "booking moved by the host");
+    } else if host_initiated {
         tracing::info!(booking_id = %booking_id, old_start = %old_start_at, new_start = %new_start_at, "booking rescheduled by guest (host-initiated, confirmed)");
     } else if needs_approval {
         tracing::info!(booking_id = %booking_id, old_start = %old_start_at, new_start = %new_start_at, "booking rescheduled by guest (now pending, needs approval)");
@@ -2629,6 +2691,13 @@ pub(super) async fn guest_reschedule_booking(
         }
     }
 
+    if let Mover::Host { booking_id, .. } = &mover {
+        return Redirect::to(&format!(
+            "/dashboard/bookings?moved={booking_id}#b-{booking_id}"
+        ))
+        .into_response();
+    }
+
     let date_label = crate::i18n::format_long_date(date, lang);
     let (cancel_notice_min, reschedule_notice_min) =
         fetch_event_type_notice_minutes(&state.pool, &et_id).await;
@@ -2658,8 +2727,116 @@ pub(super) async fn guest_reschedule_booking(
     Html(rendered).into_response()
 }
 
-/// Host reschedule: send the guest a link to pick a new time.
-/// GET shows a confirmation page, POST sends the email.
+/// A booking of the user's own event types, as the host's reschedule page
+/// and its move read it.
+struct HostBooking {
+    id: String,
+    uid: String,
+    guest_name: String,
+    guest_email: String,
+    start_at: String,
+    end_at: String,
+    title: String,
+    et_id: String,
+    duration_min: i32,
+    guest_tz: Tz,
+    reschedule_token: String,
+    status: String,
+}
+
+/// The confirmed or pending booking `booking_id` of one of `user`'s event
+/// types, the dashboard's rule for rescheduling (`host_request_reschedule`).
+async fn host_booking(
+    pool: &SqlitePool,
+    user: &crate::models::User,
+    booking_id: &str,
+) -> Option<HostBooking> {
+    let row: Option<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        i32,
+        Option<String>,
+        String,
+        String,
+    )> = sqlx::query_as(
+        "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, et.id,
+                et.duration_min, b.guest_timezone, b.reschedule_token, b.status
+         FROM bookings b
+         JOIN event_types et ON et.id = b.event_type_id
+         JOIN accounts a ON a.id = et.account_id
+         WHERE b.id = ? AND a.user_id = ? AND b.status IN ('confirmed', 'pending')",
+    )
+    .bind(booking_id)
+    .bind(&user.id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!(error = %e, "cannot read the booking to reschedule");
+        None
+    });
+    let (
+        id,
+        uid,
+        guest_name,
+        guest_email,
+        start_at,
+        end_at,
+        title,
+        et_id,
+        duration_min,
+        tz,
+        token,
+        status,
+    ) = row?;
+    Some(HostBooking {
+        id,
+        uid,
+        guest_name,
+        guest_email,
+        start_at,
+        end_at,
+        title,
+        et_id,
+        duration_min,
+        guest_tz: tz.and_then(|z| z.parse().ok()).unwrap_or(Tz::UTC),
+        reschedule_token: token,
+        status,
+    })
+}
+
+/// A stored booking time as an instant (legacy rows in `legacy_tz`).
+fn booking_instant(value: &str, legacy_tz: Tz) -> Option<chrono::DateTime<Utc>> {
+    crate::booking_time::local(value, legacy_tz, Tz::UTC).map(|t| t.and_utc())
+}
+
+/// "Tue 1 Dec, 10:00–10:30" in `tz`.
+fn short_range(
+    start: chrono::DateTime<Utc>,
+    end: chrono::DateTime<Utc>,
+    tz: Tz,
+    lang: &'static str,
+) -> String {
+    let (s, e) = (start.with_timezone(&tz), end.with_timezone(&tz));
+    let weekday = s.format("%a").to_string().to_lowercase();
+    format!(
+        "{}, {}, {}\u{2013}{}",
+        crate::i18n::translate(lang, &format!("common-weekday-long-{weekday}"), None),
+        crate::i18n::format_short_date(s.date_naive(), lang),
+        s.format("%H:%M"),
+        e.format("%H:%M")
+    )
+}
+
+/// The host's reschedule page. A confirmed booking: pick its new time in the
+/// week (the propose times grid) and move it, or ask the guest to pick one.
+/// A request still waiting for approval can only be handed to the guest, as
+/// before: moving it would approve it on the side.
 pub(super) async fn host_reschedule_slots(
     State(state): State<Arc<AppState>>,
     auth_user: crate::auth::AuthUser,
@@ -2669,32 +2846,108 @@ pub(super) async fn host_reschedule_slots(
     let user = &auth_user.user;
     // The bookings page (page, search) the host came from.
     let return_to = bookings_return(query.get("return_to").map(String::as_str), None);
-    // Dashboard handler: no Accept-Language available, so honour the user's
-    // saved preference and fall back to English. Once the dashboard is
-    // translated this should switch to crate::i18n::resolve(...).
-    let lang = user.language.as_deref().unwrap_or("en");
-
-    let booking: Option<(String, String, String, String, String, String)> = sqlx::query_as(
-        "SELECT b.id, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title
-         FROM bookings b
-         JOIN event_types et ON et.id = b.event_type_id
-         JOIN accounts a ON a.id = et.account_id
-         WHERE b.id = ? AND a.user_id = ? AND b.status IN ('confirmed', 'pending')",
-    )
-    .bind(&booking_id)
-    .bind(&user.id)
-    .fetch_optional(&state.pool)
-    .await
-    .unwrap_or(None);
-
-    let (bid, guest_name, guest_email, start_at, end_at, event_title) = match booking {
-        Some(b) => b,
-        None => return Redirect::to(&return_to).into_response(),
+    let lang = auth_user.lang;
+    let Some(b) = host_booking(&state.pool, user, &booking_id).await else {
+        return Redirect::to(&return_to).into_response();
     };
+    let host_tz = get_host_tz(&state.pool, &b.et_id).await;
+    if b.status == "confirmed" {
+        let (Some(start), Some(end)) = (
+            booking_instant(&b.start_at, host_tz),
+            booking_instant(&b.end_at, host_tz),
+        ) else {
+            return Redirect::to(&return_to).into_response();
+        };
+        let error_message = match query.get("error").map(String::as_str) {
+            Some("slot-too-soon") => crate::i18n::translate(lang, "bkmove-error-past", None),
+            Some("slot-unavailable") => {
+                crate::i18n::translate(lang, "bkmove-error-unavailable", None)
+            }
+            Some(_) => crate::i18n::translate(lang, "bookings-error-generic", None),
+            None => String::new(),
+        };
+        let week_start = week_start::event(&state.pool, &b.et_id).await.effective();
+        let local_start = start.with_timezone(&host_tz).date_naive();
+        let booked_week = local_start - Duration::days(i64::from(week_start.offset(local_start)));
+        let guest_city = zone_city(b.guest_tz);
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("when", short_range(start, end, b.guest_tz, lang));
+        args.set("city", guest_city.clone());
+        let guest_when = crate::i18n::translate(lang, "bkmove-for-guest", Some(&args));
+        let t = |key: &str| crate::i18n::translate(lang, key, None);
+        let js_i18n = serde_json::json!({
+            "gridLabel": t("propose-grid-label"),
+            "hint": t("bkmove-hint"),
+            "youLabel": t("propose-you-label"),
+            "guestTime": t("propose-guest-time"),
+            "prevWeek": t("tl-prev-week"),
+            "nextWeek": t("tl-next-week"),
+            "remove": t("bkmove-remove"),
+            "refusedPast": t("propose-refused-past"),
+            "previewBusy": t("bkmove-preview-busy"),
+            "previewOutside": t("bkmove-preview-outside"),
+            "currentLabel": t("bkmove-legend-current"),
+            "empty": t("bkmove-empty"),
+            "forGuest": t("bkmove-for-guest-js"),
+            "warnBusy": t("bkmove-warn-busy"),
+            "warnOutside": t("bkmove-warn-outside"),
+            "submit": t("bkmove-submit"),
+            "submitTo": t("bkmove-submit-to"),
+            "loadFailed": t("propose-load-failed"),
+            "guestAxis": t("propose-guest-label"),
+        });
+        let config = serde_json::json!({
+            "weekUrl": format!("/dashboard/bookings/{}/reschedule/week", b.id),
+            "hostTz": host_tz.name(),
+            "duration": b.duration_min,
+            "lang": crate::i18n::html_lang(lang),
+            "title": &b.title,
+            "current": start.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "currentWeek": booked_week.to_string(),
+            "guestName": &b.guest_name,
+            "guestTz": b.guest_tz.name(),
+            "guestCity": guest_city,
+        });
+        let emails_guest = matches!(
+            crate::email::load_smtp_config(&state.pool, &state.secret_key).await,
+            Ok(Some(_))
+        );
+        let tmpl = match state.templates.get_template("booking_host_move.html") {
+            Ok(t) => t,
+            Err(e) => return internal_error_response("internal", &e),
+        };
+        let (impersonating, impersonating_name, _) = impersonation_ctx(&auth_user);
+        let rendered = tmpl
+            .render(context! {
+                sidebar => sidebar_context(&auth_user, "bookings"),
+                lang => lang,
+                impersonating => impersonating,
+                impersonating_name => impersonating_name,
+                booking_id => &b.id,
+                event_title => &b.title,
+                duration_min => b.duration_min,
+                guest_name => &b.guest_name,
+                guest_email => &b.guest_email,
+                long_when => short_range(start, end, host_tz, lang),
+                guest_when => if b.guest_tz == host_tz { String::new() } else { guest_when },
+                guest_tz => b.guest_tz.name(),
+                guest_city => zone_city(b.guest_tz),
+                host_tz => host_tz.name(),
+                tz_options => timezone_options(b.guest_tz.name(), lang),
+                config => config,
+                js_i18n => js_i18n,
+                error_message => error_message,
+                emails_guest => emails_guest,
+                return_to => return_to,
+            })
+            .unwrap_or_else(|e| internal_error_body("template render", &e));
+        return Html(rendered).into_response();
+    }
 
+    let (bid, guest_name, guest_email, event_title) = (b.id, b.guest_name, b.guest_email, b.title);
     let (start_at, end_at) = crate::booking_time::wall_strings(
-        &start_at,
-        &end_at,
+        &b.start_at,
+        &b.end_at,
         user.timezone.parse().unwrap_or(Tz::UTC),
     );
     let date_label = format_date_label(&start_at, lang);
@@ -2721,6 +2974,134 @@ pub(super) async fn host_reschedule_slots(
         .unwrap_or_else(|e| internal_error_body("template render", &e));
 
     Html(rendered).into_response()
+}
+
+/// `GET /dashboard/bookings/{id}/reschedule/week?start=YYYY-MM-DD`: the week
+/// of the host's reschedule page, as the propose times page's, without the
+/// booking itself in the busy time.
+pub(super) async fn host_reschedule_week(
+    State(state): State<Arc<AppState>>,
+    auth_user: crate::auth::AuthUser,
+    Path(booking_id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let Some(b) = host_booking(&state.pool, &auth_user.user, &booking_id)
+        .await
+        .filter(|b| b.status == "confirmed")
+    else {
+        return dashboard_not_found(&state, &auth_user);
+    };
+    // The week view syncs the calendars: the REST API's heavy limit, per user.
+    if state
+        .api_heavy_limiter
+        .check_limited(&format!("propose-week:{}", auth_user.user.id))
+        .await
+    {
+        return (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({ "error": "rate_limited" })),
+        )
+            .into_response();
+    }
+    let owner = auth_user.user.id.clone();
+    let hosts = match reschedule_hosts(&state.pool, &b.uid, &owner).await {
+        Ok(hosts) => hosts,
+        Err(e) => {
+            tracing::error!(error = %e, booking_id = %b.id, "cannot read the booking's hosts");
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(serde_json::json!({ "error": "internal" })),
+            )
+                .into_response();
+        }
+    };
+    sync_reschedule_hosts(&state, &hosts).await;
+    let start = query
+        .get("start")
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    let scope = WeekScope {
+        et_id: &b.et_id,
+        user_id: &owner,
+        lang: auth_user.lang,
+        tz: get_host_tz(&state.pool, &b.et_id).await,
+        duration_min: b.duration_min,
+        moving: Some(MovingBooking {
+            id: &b.id,
+            uid: &b.uid,
+            hosts: &hosts,
+        }),
+    };
+    match week_data(&state, &scope, start).await {
+        Ok(week) => axum::Json(week).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, booking_id = %b.id, "cannot compute the reschedule week");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(serde_json::json!({ "error": "internal" })),
+            )
+                .into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub(super) struct HostMoveForm {
+    _csrf: Option<String>,
+    /// The new start, an RFC 3339 instant.
+    start: String,
+    /// Present when the host chose a time that is busy or outside the
+    /// event type's hours after being warned.
+    #[serde(default)]
+    force: Option<String>,
+}
+
+/// `POST /dashboard/bookings/{id}/move`: the host moves a confirmed booking
+/// to the time they picked. The guest is emailed the new time with the
+/// updated invite and both calendars follow, as when the guest moves it
+/// (`reschedule_to`).
+pub(super) async fn host_move_booking(
+    State(state): State<Arc<AppState>>,
+    auth_user: crate::auth::AuthUser,
+    headers: HeaderMap,
+    Path(booking_id): Path<String>,
+    Form(form): Form<HostMoveForm>,
+) -> Response {
+    if let Err(resp) = verify_csrf_token(&headers, &form._csrf) {
+        return resp;
+    }
+    let Some(b) = host_booking(&state.pool, &auth_user.user, &booking_id).await else {
+        return Redirect::to(&bookings_return(None, Some("booking-moved-on"))).into_response();
+    };
+    if b.status != "confirmed" {
+        return Redirect::to(&format!("/dashboard/bookings/{}/reschedule", b.id)).into_response();
+    }
+    let Ok(start) = chrono::DateTime::parse_from_rfc3339(form.start.trim()) else {
+        return Redirect::to(&format!(
+            "/dashboard/bookings/{}/reschedule?error=invalid",
+            b.id
+        ))
+        .into_response();
+    };
+    // The core reads the guest's wall clock, as their reschedule link posts
+    // it: the time in the guest's own zone keeps the emails in it.
+    let guest_local = start.with_timezone(&b.guest_tz);
+    let move_form = RescheduleForm {
+        _csrf: None,
+        date: guest_local.format("%Y-%m-%d").to_string(),
+        time: guest_local.format("%H:%M").to_string(),
+        tz: Some(b.guest_tz.name().to_string()),
+    };
+    let force = form.force.as_deref().is_some_and(|v| !v.is_empty());
+    reschedule_to(
+        &state,
+        &b.reschedule_token,
+        move_form,
+        Mover::Host {
+            booking_id: b.id.clone(),
+            force,
+        },
+    )
+    .await
 }
 
 /// Host reschedule: set reschedule_by_host flag, regenerate token, email guest

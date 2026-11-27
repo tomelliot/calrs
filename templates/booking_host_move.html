@@ -1,0 +1,312 @@
+{% extends "dashboard_base.html" %}
+{#- The host moves a confirmed booking to a time they pick (host_reschedule_slots).
+    Layout and week grid are the propose times page's (propose_times.html,
+    partials/week_grid_*.html); asking the guest to pick a time
+    (booking_host_reschedule.html's request) stays as the alternative. -#}
+{% block title %}{{ t("bkmove-title") }}, calrs{% endblock %}
+{% block main_class %}has-cards{% endblock %}
+{% block container_class %}is-wide pp-wide{% endblock %}
+{% block dashboard_content %}
+{% import "partials/icons.html" as ic %}
+{% import "partials/week_grid_tz.html" as wgtz %}
+{% include "partials/week_grid_style.html" %}
+<style>
+  .dashboard-main .container.pp-wide { max-width: 1480px; }
+  .pp-grid { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+  .pp-stack { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+  .pp-ctx-title { font-weight: 600; color: var(--ink); }
+  .pp-ctx-meta { font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+  .pp-clear { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+  .pp-empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 14px 16px; color: var(--text-muted); line-height: 1.5; font-size: 13.5px; }
+  .pp-check { display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 0.9rem; font-size: 14px; color: var(--text); }
+  .pp-check input { margin-top: 0.2rem; }
+  .pp-check small { display: block; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+  .pp-foot { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .pp-cal-head { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+  .pp-cal-head .tl-bar .cal-header-title { font-size: 1.15rem; margin: 0 0 0 4px; }
+  .pp-cal .card-body { padding-left: 0; padding-right: 0; }
+  .pp-cal .tl { height: clamp(420px, calc(100vh - 270px), 900px); border-left: 0; border-right: 0; border-radius: 0; }
+  .pp-cal .card-foot { margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); }
+  .pp-cal .tl-bar-end { margin-left: auto; }
+
+  /* From / to: the one new piece. Two rows on the ledger's time column. */
+  .mv { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); gap: 0.55rem 0.75rem; margin: 1rem 0 0; align-items: baseline; }
+  .mv dt { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .mv dd { margin: 0; min-width: 0; font-variant-numeric: tabular-nums; }
+  .mv-when { font-weight: 600; color: var(--ink); }
+  .mv-sub { display: block; font-size: 12.5px; color: var(--text-secondary); }
+  .mv-sub.is-guest { color: var(--tl-guest); }
+  .mv.is-moved .mv-from .mv-when { color: var(--text-muted); text-decoration: line-through; font-weight: 500; }
+  .mv-to .mv-when { color: var(--accent); }
+  .mv-to .pp-empty { margin: 0; }
+  .mv-warn { margin: 0.9rem 0 0; }
+  .mv-warn label { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.4rem; color: var(--text); }
+  .mv-warn label input { margin-top: 0.2rem; }
+
+  .mv-field { display: flex; flex-direction: column; gap: 0.35rem; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .mv-field textarea { min-height: 4.5rem; resize: vertical; padding: 0.5rem 0.625rem; border: 1px solid var(--border-hover); border-radius: var(--r-control); font: inherit; font-size: 14px; font-weight: 400; background: var(--surface); color: var(--text); }
+  .mv-field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .mv-field small { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+  .mv-field[aria-disabled="true"] { opacity: 0.5; }
+  .mv-note { margin: 0.9rem 0 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+  .mv-alt p { margin: 0 0 0.9rem; font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; }
+
+  /* Grid layers. The booking's current place: a dashed outline, the
+     colour of a booking on the ledger. The new place: the proposal
+     block, amber when it overrides busy time or the meeting's hours. */
+  .tl-current { position: absolute; left: 3px; right: 3px; z-index: 2; border: 1.5px dashed var(--accent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 7%, transparent); font-size: 11.5px; line-height: 1.25; padding: 3px 6px; color: var(--accent); pointer-events: none; overflow: hidden; }
+  .tl-current b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl-current.is-left { opacity: 0.55; }
+  .tl-block.tl-prop.is-warn { background: var(--warning); border-color: var(--warning); }
+  .tl-legend .is-current i { background: color-mix(in srgb, var(--accent) 7%, transparent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  @media (max-width: 1100px) { .pp-grid { grid-template-columns: 1fr; } .pp-grid > .pp-stack:first-child { order: 2; } }
+</style>
+
+<header class="page-header">
+  <div class="page-header-text">
+    <a href="{{ return_to }}" class="page-back">{{ ic.icon("arrow-left", 14) }}{{ t("bookings-page-title") }}</a>
+    <h1 class="page-title">{{ t("bkmove-title") }}</h1>
+    <p class="page-subtitle">{{ t("bkmove-sub", guest=guest_name) }}</p>
+  </div>
+</header>
+
+{% if error_message %}
+<div class="notice notice--error" role="alert">{{ ic.icon("alert") }}<span>{{ error_message }}</span></div>
+{% endif %}
+
+<div class="pp-grid">
+  <div class="pp-stack">
+    <form id="mv-form" method="post" action="/dashboard/bookings/{{ booking_id }}/move">
+      <input type="hidden" name="start" id="mv-start">
+      <section class="card" aria-labelledby="mv-h-booking">
+        <div class="card-head">
+          <h2 id="mv-h-booking">{{ t("bkmove-booking") }}</h2>
+          <button type="button" class="card-action pp-clear" id="mv-reset" hidden>{{ t("bkmove-reset") }}</button>
+        </div>
+        <div class="card-body">
+          <div class="pp-ctx-title">{{ event_title }} · {{ duration_label(duration_min) }}</div>
+          <div class="pp-ctx-meta">{{ guest_name }} · {{ guest_email }}</div>
+          <dl class="mv" id="mv">
+            <dt>{{ t("bkmove-now") }}</dt>
+            <dd class="mv-from"><span class="mv-when">{{ long_when }}</span>{% if guest_when %}<span class="mv-sub is-guest">{{ guest_when }}</span>{% endif %}</dd>
+            <dt>{{ t("bkmove-new") }}</dt>
+            <dd class="mv-to" id="mv-to" aria-live="polite"><p class="pp-empty">{{ t("bkmove-empty") }}</p></dd>
+          </dl>
+          <div class="notice notice--warning mv-warn" id="mv-warn" role="alert" hidden>{{ ic.icon("alert") }}<div><span id="mv-warn-text"></span><label><input type="checkbox" id="mv-override" name="force" value="1">{{ t("bkmove-override") }}</label></div></div>
+          <p class="mv-note">{% if emails_guest %}{{ t("bkmove-note", guest=guest_name) }}{% else %}{{ t("bkmove-note-no-email") }}{% endif %}</p>
+        </div>
+        <div class="card-foot pp-foot">
+          <button type="submit" class="ui-btn ui-btn--primary" id="mv-submit" disabled>{{ t("bkmove-submit") }}</button>
+          <a href="{{ return_to }}" class="ui-btn ui-btn--ghost">{{ t("bookings-back") }}</a>
+        </div>
+      </section>
+    </form>
+    <form class="card mv-alt" method="post" action="/dashboard/bookings/{{ booking_id }}/reschedule" aria-labelledby="mv-h-alt">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="card-head"><h2 id="mv-h-alt">{{ t("bkmove-alt") }}</h2></div>
+      <div class="card-body">
+        <p>{{ t("bkmove-alt-body", guest=guest_name) }}</p>
+        <button type="submit" class="ui-btn ui-btn--sm">{{ t("bkmove-alt-button") }}</button>
+      </div>
+    </form>
+  </div>
+
+  <section class="card pp-cal" aria-labelledby="pp-range">
+    <div class="card-head pp-cal-head">
+      <div class="tl-bar">
+        <button type="button" class="tl-pill" id="pp-today">{{ t("bkmove-back-to-current") }}</button>
+        <div class="cal-nav" id="pp-nav"></div>
+        <h2 class="cal-header-title" id="pp-range"></h2>
+      </div>
+      <ul class="tl-legend">
+        <li class="is-busy"><i></i>{{ t("propose-legend-busy") }}</li>
+        <li class="is-closed"><i></i>{{ t("propose-legend-outside") }}</li>
+        <li class="is-current"><i></i>{{ t("bkmove-legend-current") }}</li>
+        <li class="is-picked"><i></i>{{ t("bkmove-legend-new") }}</li>
+        <li class="is-night" id="pp-legend-night" hidden><i></i>{{ t("bkmove-legend-guest-night") }}</li>
+      </ul>
+    </div>
+    <div class="card-body"><div id="pp-week"></div></div>
+    <div class="card-foot">
+      {{ wgtz.tz_select("pp-guest-tz", t("bkmove-guest-tz"), tz_options, first_label=t("bkmove-guest-tz-booked", city=guest_city), first_value=guest_tz) }}
+    </div>
+  </section>
+</div>
+
+{% include "partials/week_grid_script.html" %}
+<script>
+(function() {
+  'use strict';
+  var CFG = {{ config | tojson }};
+  var T = {{ js_i18n | tojson }};
+  var HOST_TZ = CFG.hostTz, DUR = CFG.duration, LANG = CFG.lang;
+  var CUR = Date.parse(CFG.current);
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function sub(s, a, b) { return String(s).replace('%1', a).replace('%2', b === undefined ? '' : b); }
+  function fmt(ms, tz, o) { var opt = { timeZone: tz }; for (var k in o) opt[k] = o[k]; return new Intl.DateTimeFormat(LANG, opt).format(ms).replace(/[  ]/g, ' '); }
+  function hm(ms, tz) { return fmt(ms, tz || HOST_TZ, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); }
+  function longDay(ms, tz) { return fmt(ms, tz || HOST_TZ, { weekday: 'short', day: 'numeric', month: 'short' }); }
+  function shortOffset(tz, at) { try { var p = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(at); for (var i = 0; i < p.length; i++) if (p[i].type === 'timeZoneName') return p[i].value; } catch (e) {} return ''; }
+  function local(ms, tz) { var p = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(ms); var v = {}; p.forEach(function(x) { v[x.type] = x.value; }); return { ds: v.year + '-' + v.month + '-' + v.day, min: (+v.hour % 24) * 60 + +v.minute }; }
+  function toMs(ds, min, tz) { var y = +ds.slice(0, 4), m = +ds.slice(5, 7), d = +ds.slice(8, 10); var wall = Date.UTC(y, m - 1, d, 0, min); function off(at) { var l = local(at, tz); var p = l.ds.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2], 0, l.min) - at; } var ms = wall - off(wall); var again = wall - off(ms); return again === ms ? ms : Math.min(ms, again); }
+  function addDs(ds, n) { var d = new Date(Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10) + n)); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+  function dsDate(ds) { return Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10), 12); }
+  function guestTz() { return $('pp-guest-tz').value || HOST_TZ; }
+  function dual() { return guestTz() !== HOST_TZ; }
+  function toast(m, k) { if (window.calrsToast) window.calrsToast(m, k || 'info'); }
+
+  var week = null, offered = {}, offeredByDay = {}, openByDay = {}, busy = [];
+  var picked = null; // { ms, why: '' | 'busy' | 'outside', busy }
+
+  /* The host may move a booking anywhere in the future: offered starts
+     snap as on Propose times, anything else on a 15 minute step, with
+     the reason it is not offered. */
+  function conflict(ms) {
+    for (var i = 0; i < busy.length; i++) if (!busy[i].self && ms < busy[i].e && ms + DUR * 6e4 > busy[i].s) return busy[i];
+    return null;
+  }
+  function judge(ds, min) {
+    var ms = toMs(ds, min, HOST_TZ);
+    var c = conflict(ms);
+    return { ms: ms, why: offered[ms] ? '' : (c ? 'busy' : 'outside'), busy: c };
+  }
+  function snap(ds, t) {
+    var iv = week ? week.interval_min : 15, list = offeredByDay[ds] || [], best = null;
+    for (var i = 0; i < list.length; i++) if (list[i] <= t && t < list[i] + iv) best = list[i];
+    var min = best !== null ? best : Math.floor(t / 15) * 15;
+    var ms = toMs(ds, min, HOST_TZ);
+    if (ms < Date.now()) return { min: min, ok: false, hidden: true, reason: 'past' };
+    if (ms === CUR) return { min: min, ok: false, hidden: true, reason: 'same' };
+    var j = judge(ds, min);
+    var g = dual() ? ' (' + sub(T.guestTime, hm(ms, guestTz())) + ')' : '';
+    return { min: min, ok: true, label: '→ ' + hm(ms) + g + (j.why === 'busy' ? ' · ' + T.previewBusy : j.why === 'outside' ? ' · ' + T.previewOutside : '') };
+  }
+  function onSelect(ds, min) { picked = judge(ds, min); $('mv-override').checked = false; render(); }
+  function onRefuse(ds, min, s) { if (s.reason === 'past') toast(T.refusedPast, 'warning'); }
+
+  function layers(col, day, g) {
+    var start = toMs(day.ds, 0, HOST_TZ), end = toMs(addDs(day.ds, 1), 0, HOST_TZ), ppm = g.pxPerMin();
+    function y(ms) { return (ms - start) / 6e4 * ppm; }
+    if (dual()) {
+      var gz = guestTz(), from = null;
+      for (var m = 0; m <= 1440; m += 15) {
+        var night = false;
+        if (m < 1440) { var gh = local(start + m * 6e4, gz).min / 60; night = gh < 8 || gh >= 21; }
+        if (night && from === null) from = m;
+        if (!night && from !== null) { var n = document.createElement('div'); n.className = 'tl-night'; n.style.top = (from * ppm) + 'px'; n.style.height = ((m - from) * ppm) + 'px'; col.appendChild(n); from = null; }
+      }
+    }
+    busy.forEach(function(b) {
+      if (b.self || b.e <= start || b.s >= end) return;
+      var e = document.createElement('div'); e.className = 'tl-busy';
+      var top = Math.max(0, y(b.s)), bottom = Math.min(1440 * ppm, y(b.e));
+      e.style.top = top + 'px'; e.style.height = Math.max(16, bottom - top - 2) + 'px';
+      var bt = document.createElement('b'); bt.textContent = b.title; e.appendChild(bt);
+      e.appendChild(document.createTextNode(hm(b.s) + '–' + hm(b.e)));
+      col.appendChild(e);
+    });
+    if (Date.now() >= start && Date.now() < end) { var now = document.createElement('div'); now.className = 'tl-now'; now.style.top = y(Date.now()) + 'px'; col.appendChild(now); }
+    // Where the booking is now. Its own time is not busy: it is the thing moving.
+    if (CUR >= start && CUR < end) {
+      var c = document.createElement('div');
+      c.className = 'tl-current' + (picked ? ' is-left' : '');
+      c.style.top = y(CUR) + 'px'; c.style.height = Math.max(16, DUR * ppm - 2) + 'px';
+      var cb = document.createElement('b'); cb.textContent = T.currentLabel; c.appendChild(cb);
+      c.appendChild(document.createTextNode(hm(CUR) + '–' + hm(CUR + DUR * 6e4)));
+      col.appendChild(c);
+    }
+    if (picked && picked.ms >= start && picked.ms < end) {
+      var b = g.block('tl-selected tl-prop' + (picked.why ? ' is-warn' : ''), (picked.ms - start) / 6e4, '');
+      b.appendChild(document.createTextNode(hm(picked.ms) + '–' + hm(picked.ms + DUR * 6e4)));
+      if (dual()) { var gl = document.createElement('small'); gl.textContent = sub(T.guestTime, hm(picked.ms, guestTz())); b.appendChild(gl); }
+      b.title = T.remove; b.setAttribute('role', 'button'); b.setAttribute('aria-label', T.remove);
+      b.addEventListener('click', function(ev) { ev.stopPropagation(); picked = null; render(); });
+      col.appendChild(b);
+    }
+  }
+
+  var grid = window.calrsWeekGrid({
+    mount: $('pp-week'), duration: DUR,
+    labels: { grid: T.gridLabel, hint: T.hint },
+    formatTime: function(min) { return pad(Math.floor(min / 60) % 24) + ':' + pad(min % 60); },
+    formatAxis: function(h) { return pad(h) + ':00'; },
+    snap: snap, onSelect: onSelect, onRefuse: onRefuse, layers: layers
+  });
+
+  function load(start) {
+    var url = CFG.weekUrl + (start ? '?start=' + encodeURIComponent(start) : '');
+    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } }).then(function(r) {
+      if (!r.ok) throw new Error('status ' + r.status);
+      return r.json();
+    }).then(function(w) {
+      week = w; offered = {}; offeredByDay = {}; openByDay = {};
+      w.offered.forEach(function(s) { var ms = Date.parse(s), l = local(ms, HOST_TZ); offered[ms] = true; (offeredByDay[l.ds] = offeredByDay[l.ds] || []).push(l.min); });
+      w.open.forEach(function(o) { var s = Date.parse(o[0]), e = Date.parse(o[1]), l = local(s, HOST_TZ); (openByDay[l.ds] = openByDay[l.ds] || []).push([l.min, l.min + (e - s) / 6e4]); });
+      busy = w.busy.map(function(b) { return { s: Date.parse(b.start), e: Date.parse(b.end), title: b.title, self: !!b.self }; });
+      render();
+    }).catch(function() { toast(T.loadFailed, 'error'); });
+  }
+
+  function renderCal() {
+    if (!week) return;
+    var days = [], todayDs = local(Date.now(), HOST_TZ).ds;
+    for (var i = 0; i < 7; i++) {
+      var ds = addDs(week.start, i);
+      days.push({ ds: ds, weekday: fmt(dsDate(ds), 'UTC', { weekday: 'short' }), dayNum: +ds.slice(8, 10), today: ds === todayDs, starts: offeredByDay[ds] || [], regions: openByDay[ds] || [] });
+    }
+    var at = toMs(week.start, 720, HOST_TZ), gz = guestTz();
+    grid.render({ days: days, zone: shortOffset(HOST_TZ, at), youTitle: T.youLabel,
+      guest: dual() ? { zone: shortOffset(gz, at), title: T.guestAxis, hour: function(h) { return hm(toMs(week.start, h * 60, HOST_TZ), gz); } } : null,
+      selected: [], empty: '' });
+    $('pp-legend-night').hidden = !dual();
+    var a = dsDate(week.start), b = dsDate(addDs(week.start, 6));
+    $('pp-range').textContent = fmt(a, 'UTC', { month: 'short', day: 'numeric' }) + ' – ' + fmt(b, 'UTC', { month: 'short', day: 'numeric', year: 'numeric' });
+    var nav = $('pp-nav'), nb = window.calrsWeekGrid.navButton;
+    nav.innerHTML = '';
+    nav.appendChild(nb(T.prevWeek, -1, !!week.prev, function() { load(week.prev); }));
+    nav.appendChild(nb(T.nextWeek, 1, !!week.next, function() { load(week.next); }));
+  }
+
+  function renderSide() {
+    var to = $('mv-to');
+    $('mv').classList.toggle('is-moved', !!picked);
+    $('mv-reset').hidden = !picked;
+    if (!picked) {
+      to.innerHTML = '<p class="pp-empty">' + T.empty + '</p>';
+    } else {
+      var p = picked.ms, e = p + DUR * 6e4;
+      to.innerHTML = '';
+      var w = document.createElement('span'); w.className = 'mv-when';
+      w.textContent = longDay(p) + ', ' + hm(p) + '–' + hm(e);
+      to.appendChild(w);
+      if (CFG.guestTz !== HOST_TZ) {
+        var s = document.createElement('span'); s.className = 'mv-sub is-guest';
+        s.textContent = sub(T.forGuest, longDay(p, CFG.guestTz) + ', ' + hm(p, CFG.guestTz) + '–' + hm(e, CFG.guestTz), CFG.guestCity);
+        to.appendChild(s);
+      }
+    }
+    var warn = picked && picked.why;
+    $('mv-warn').hidden = !warn;
+    if (warn) $('mv-warn-text').textContent = picked.why === 'busy'
+      ? sub(T.warnBusy, picked.busy.title, hm(picked.busy.s) + '–' + hm(picked.busy.e))
+      : sub(T.warnOutside, CFG.title);
+    var ready = picked && (!warn || $('mv-override').checked);
+    $('mv-submit').disabled = !ready;
+    $('mv-submit').textContent = picked ? sub(T.submitTo, longDay(picked.ms) + ', ' + hm(picked.ms)) : T.submit;
+    $('mv-start').value = picked ? new Date(picked.ms).toISOString() : '';
+  }
+  function render() { renderCal(); renderSide(); }
+
+  $('mv-override').addEventListener('change', renderSide);
+  $('mv-reset').addEventListener('click', function() { picked = null; render(); });
+  $('pp-guest-tz').addEventListener('change', render);
+  $('pp-today').addEventListener('click', function() { load(CFG.currentWeek); });
+  $('mv-form').addEventListener('submit', function(e) {
+    if (!picked || $('mv-submit').disabled) { e.preventDefault(); return; }
+    $('mv-submit').disabled = true;
+  });
+  load(CFG.currentWeek);
+})();
+</script>
+{% endblock %}

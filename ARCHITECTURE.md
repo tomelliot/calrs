@@ -92,7 +92,7 @@ Every user-facing string goes through Fluent (`i18n/`).
 | `public_pages.rs` | Public GET pages: user and team profiles, slot pickers, booking forms, dynamic group links, legacy redirects |
 | `landing.rs` | What the landing pages show besides the meetings: sections (grouping, `PAGE_ORDER`, the event type form's section field and suggestions) and the arrange pages `/dashboard/event-types/order` and `/dashboard/teams/{team_id}/order` (up and down moves, positions rewritten in one transaction, team admins only), the host's usual hours line (`usual_hours`), "Based in" and the spoken languages (codes, names in the visitor's language, `join_list`) |
 | `booking.rs` | Booking form POST handlers for every URL shape, input validation, location resolution, SMS phone mode. The personal and team handlers are thin: `book_personal` and `book_team` do the booking (shared with the REST API) and return a `BookingRefusal` the handler renders as before |
-| `booking_actions.rs` | Token pages reached from emails: approve, decline, guest cancel, reschedule (guest and host), claim, ICS |
+| `booking_actions.rs` | Token pages reached from emails: approve, decline, guest cancel, reschedule (guest and host), claim, ICS. `reschedule_to` moves a booking for the guest's link and for the host's move (`Mover`), and `host_reschedule_slots`/`host_reschedule_week`/`host_move_booking` are the host's reschedule page (`booking_host_move.html`, the propose times week grid) |
 | `availability.rs` | Slot computation, busy times, frequency limits, user working hours, timezone helpers, horizon, troubleshoot view |
 | `hosts.rs` | Who hosts a booking: host identity, collective members, write targets, reschedule and approval hosts |
 | `calendar_push.rs` | Pushing and deleting booking events on host calendars and resource collections |
@@ -126,7 +126,7 @@ Every user-facing string goes through Fluent (`i18n/`).
 | `branding.rs` | Theme CSS, embed pages, static assets baked into the binary |
 | `listing.rs` | Shared pieces of long lists: case-blind `GLOB` search patterns bound into SQL (`ci_glob`, `ci_contains`), offset paging (`paged`: COUNT then `LIMIT`/`OFFSET` over a fixed `ORDER BY` ending with the id, `PageParams`, `Page`) and the page links (`Pager`, `href`, `page_part`, `partials/pager.html`) used by every paged dashboard list |
 | `format.rs` | Date and time labels for pages, emails and the dashboard |
-| `propose.rs` | Fork: propose times (`/dashboard/propose`): the meetings a user may propose under each booking site, the week JSON (offered starts from `offered_slots`, titled busy blocks, open windows), access checks; writes nothing |
+| `propose.rs` | Fork: propose times (`/dashboard/propose`): the meetings a user may propose under each booking site, the week JSON (`week_data`: offered starts from `offered_slots`, titled busy blocks, open windows; also the host's reschedule week, which leaves the moving booking out), access checks; writes nothing |
 | `week_start.rs` | Calendar display preference: event override → account owner's default → site default (Monday); named weekday keys, independent of availability's `0=Sunday` storage |
 | `tests/` | Web tests, one file per area (below) |
 

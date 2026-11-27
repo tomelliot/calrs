@@ -2557,3 +2557,39 @@ propose-copied =
         [one] { $count } Zeit kopiert
        *[other] { $count } Zeiten kopiert
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Buchung verschieben
+bkmove-sub = Wähle eine neue Zeit für { $guest } in deiner Woche.
+bkmove-booking = Buchung
+bkmove-reset = Aktuelle Zeit behalten
+bkmove-now = Jetzt
+bkmove-new = Neu
+bkmove-empty = Klicke auf eine Zeit in der Woche, um die Buchung dorthin zu verschieben.
+bkmove-override = Trotzdem dorthin verschieben
+bkmove-note = { $guest } bekommt die neue Zeit mit einer aktualisierten Einladung per E-Mail, und beide Kalender werden aktualisiert.
+bkmove-submit = Buchung verschieben
+bkmove-submit-to = Auf %1 verschieben
+bkmove-alt = Den Gast wählen lassen
+bkmove-alt-body = Unsicher, was { $guest } passt? Schick einen Link, mit dem eine freie Zeit gewählt werden kann. Die Buchung behält ihre Zeit, bis gewählt wurde.
+bkmove-alt-button = Gast um eine neue Zeit bitten
+bkmove-back-to-current = Gebuchte Woche
+bkmove-legend-current = Aktuell gebucht
+bkmove-legend-new = Neue Zeit
+bkmove-legend-guest-night = Nacht des Gastes
+bkmove-guest-tz = Zeitzone des Gastes
+bkmove-guest-tz-booked = Wie gebucht ({ $city })
+bkmove-hint = Klicke auf eine Zeit, um die Buchung dorthin zu verschieben
+bkmove-remove = Diese Zeit entfernen
+bkmove-preview-busy = belegt
+bkmove-preview-outside = außerhalb der Zeiten
+bkmove-for-guest = { $when } für den Gast ({ $city })
+bkmove-for-guest-js = %1 für den Gast (%2)
+bkmove-warn-busy = Das überschneidet sich mit „%1“ (%2) in deinem Kalender.
+bkmove-warn-outside = Das liegt außerhalb der Zeiten von %1.
+bkmove-error-past = Diese Zeit ist vorbei. Wähle eine spätere.
+bkmove-error-unavailable = Diese Zeit ist nicht mehr frei. Wähle eine andere.
+bkmove-error-moved-on = Diese Buchung wurde inzwischen abgesagt oder verschoben, daher wurde nichts geändert.
+bkmove-moved-notice = { $guest } auf { $date } um { $time } verschoben.
+bkmove-moved-emailed = { $guest } hat die neue Zeit per E-Mail bekommen.
+bkmove-note-no-email = Die Kalenderkopien werden aktualisiert. Es wird keine E-Mail gesendet, da auf diesem Server keine E-Mail eingerichtet ist.

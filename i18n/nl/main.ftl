@@ -2559,3 +2559,39 @@ propose-copied =
         [one] { $count } tijd gekopieerd
        *[other] { $count } tijden gekopieerd
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Boeking verplaatsen
+bkmove-sub = Kies een nieuwe tijd voor { $guest } in je week.
+bkmove-booking = Boeking
+bkmove-reset = Huidige tijd houden
+bkmove-now = Nu
+bkmove-new = Nieuw
+bkmove-empty = Klik op een tijd in de week om de boeking daarheen te verplaatsen.
+bkmove-override = Toch daarheen verplaatsen
+bkmove-note = { $guest } krijgt de nieuwe tijd per e-mail met een bijgewerkte uitnodiging, en beide agenda's worden bijgewerkt.
+bkmove-submit = Boeking verplaatsen
+bkmove-submit-to = Verplaatsen naar %1
+bkmove-alt = Laat de gast kiezen
+bkmove-alt-body = Weet je niet wat { $guest } uitkomt? Stuur een link om een vrije tijd te kiezen. De boeking houdt haar huidige tijd tot er gekozen is.
+bkmove-alt-button = Vraag de gast een tijd te kiezen
+bkmove-back-to-current = Geboekte week
+bkmove-legend-current = Nu geboekt
+bkmove-legend-new = Nieuwe tijd
+bkmove-legend-guest-night = Nacht van de gast
+bkmove-guest-tz = Tijdzone van de gast
+bkmove-guest-tz-booked = Zoals geboekt ({ $city })
+bkmove-hint = Klik op een tijd om de boeking daarheen te verplaatsen
+bkmove-remove = Deze tijd verwijderen
+bkmove-preview-busy = bezet
+bkmove-preview-outside = buiten de tijden
+bkmove-for-guest = { $when } voor de gast ({ $city })
+bkmove-for-guest-js = %1 voor de gast (%2)
+bkmove-warn-busy = Dit overlapt met ‘%1’ (%2) in je agenda.
+bkmove-warn-outside = Dit valt buiten de tijden van %1.
+bkmove-error-past = Die tijd is voorbij. Kies een latere.
+bkmove-error-unavailable = Die tijd is niet meer vrij. Kies een andere.
+bkmove-error-moved-on = Die boeking is intussen geannuleerd of verplaatst, dus er is niets gewijzigd.
+bkmove-moved-notice = Boeking van { $guest } verplaatst naar { $date } om { $time }.
+bkmove-moved-emailed = { $guest } heeft de nieuwe tijd per e-mail gekregen.
+bkmove-note-no-email = De agendakopieën worden bijgewerkt. Er wordt geen e-mail verstuurd, omdat e-mail op deze server niet is ingesteld.

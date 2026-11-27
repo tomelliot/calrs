@@ -30,6 +30,7 @@ mod format;
 mod google_copies;
 mod guards;
 mod guest_footer;
+mod host_move;
 mod hosts;
 mod invites;
 mod landing;

@@ -2575,3 +2575,39 @@ propose-copied =
         [one] Copied { $count } time
        *[other] Copied { $count } times
     }
+
+# Host moves a booking to a time they pick (booking_host_move.html).
+bkmove-title = Reschedule booking
+bkmove-sub = Pick a new time for { $guest } in your week.
+bkmove-booking = Booking
+bkmove-reset = Keep current time
+bkmove-now = Now
+bkmove-new = New
+bkmove-empty = Click a time in the week to move the booking there.
+bkmove-override = Move it there anyway
+bkmove-note = { $guest } is emailed the new time with an updated invite, and both calendars are updated.
+bkmove-submit = Move booking
+bkmove-submit-to = Move to %1
+bkmove-alt = Let the guest choose
+bkmove-alt-body = Not sure what suits { $guest }? Email them a link to pick any open time. The booking keeps its current time until they do.
+bkmove-alt-button = Ask the guest to pick a time
+bkmove-back-to-current = Booked week
+bkmove-legend-current = Booked now
+bkmove-legend-new = New time
+bkmove-legend-guest-night = Guest's night
+bkmove-guest-tz = Guest's time zone
+bkmove-guest-tz-booked = As booked ({ $city })
+bkmove-hint = Click any time to move the booking there
+bkmove-remove = Remove this time
+bkmove-preview-busy = busy
+bkmove-preview-outside = outside hours
+bkmove-for-guest = { $when } for the guest ({ $city })
+bkmove-for-guest-js = %1 for the guest (%2)
+bkmove-warn-busy = This clashes with “%1” (%2) in your calendar.
+bkmove-warn-outside = This is outside the hours of %1.
+bkmove-error-past = That time has passed. Pick a later one.
+bkmove-error-unavailable = That time is no longer free. Pick another one.
+bkmove-error-moved-on = That booking was cancelled or moved in the meantime, so nothing was changed.
+bkmove-moved-notice = Moved { $guest } to { $date } at { $time }.
+bkmove-moved-emailed = { $guest } was emailed the new time.
+bkmove-note-no-email = Calendar copies are updated. No email is sent, since email is not set up on this server.

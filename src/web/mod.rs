@@ -1397,6 +1397,11 @@ pub async fn create_router(
             get(host_reschedule_slots).post(host_reschedule_booking),
         )
         .route(
+            "/dashboard/bookings/{id}/reschedule/week",
+            get(host_reschedule_week),
+        )
+        .route("/dashboard/bookings/{id}/move", post(host_move_booking))
+        .route(
             "/dashboard/bookings/{id}/reschedule/resend",
             post(host_resend_reschedule),
         )
